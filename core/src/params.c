@@ -72,11 +72,6 @@ double relais_params_period_s(const relais_params *p) {
   return (double)relais_params_period_ms(p) / 1000.0;
 }
 
-double relais_params_step_s(const relais_params *p) {
-  if (p == NULL) return 0.0;
-  return (double)p->period_ms / 1000.0;
-}
-
 static bool apply_kv(relais_params *p, const char *k, const char *v) {
   double d = strtod(v, NULL);
   unsigned long u = strtoul(v, NULL, 10);
