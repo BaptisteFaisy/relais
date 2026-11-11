@@ -8,7 +8,7 @@ AR       ?= ar
 BUILD    := build
 CFLAGS   ?= -std=c11 -O2 -g -Wall -Wextra -Werror -Wshadow -Wconversion \
             -Wno-sign-conversion -fno-strict-aliasing
-CPPFLAGS += -D_POSIX_C_SOURCE=200809L -Icore/include -Icore/tests -MMD -MP
+CPPFLAGS += -D_POSIX_C_SOURCE=200809L -Icore/include -Icore/tests -Iactuator -MMD -MP
 LDLIBS   += -lm
 
 CORE_SRC := $(sort $(wildcard core/src/*.c))
@@ -21,7 +21,7 @@ EXPLORE_SRC := $(sort $(wildcard host/explore/*.c))
 # proof of level 1 lives in the seeded simulator, and `make all` stays green.
 EXPLORE_BIN := $(if $(EXPLORE_SRC),$(BUILD)/relais-explore)
 SIMULATE_SRC := $(sort $(wildcard host/simulate/*.c))
-ACTUATOR_SRC := $(sort $(wildcard actuator/pc/*.c))
+ACTUATOR_SRC := $(sort $(wildcard actuator/*.c actuator/pc/*.c))
 VERIFY_SRC := $(sort $(wildcard host/verify/*.c))
 NODE_SRC := $(sort $(wildcard host/node/*.c))
 LIB := $(BUILD)/librelais.a

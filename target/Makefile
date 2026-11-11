@@ -19,11 +19,11 @@ SRC_net       := net.c qnx_util.c
 SRC_core      := core.c qnx_util.c
 SRC_ctl       := ctl.c qnx_util.c
 SRC_relaisctl := relaisctl.c qnx_util.c
-SRC_actuator  := actuator_qnx.c qnx_util.c
+SRC_actuator  := actuator_qnx.c qnx_util.c ../actuator/journal_writer.c
 
 STUBFLAGS := -std=c11 -Wall -Wextra -Werror -Wshadow -Wconversion \
              -Wno-sign-conversion -D_POSIX_C_SOURCE=200809L -DRELAIS_HOST_STUB \
-             -I$(CORE)/include -Iinclude
+             -I$(CORE)/include -Iinclude -I../actuator
 SOURCES := $(wildcard *.c) $(wildcard include/*.h) host_stub.h
 
 .PHONY: all syntax clean qnx
@@ -60,7 +60,7 @@ syntax:
 	for f in $(wildcard include/*.h) host_stub.h; do \
 	  if gcc -fsyntax-only $(STUBFLAGS) -x c $$f; then echo "  ok   $$f"; \
 	  else echo "  FAIL $$f"; fail=1; fi; done; \
-	[ $$fail -eq 0 ] || (echo "SYNTAX-FAIL"; exit 1); echo "SYNTAX-OK"
+	if [ $$fail -ne 0 ]; then echo "SYNTAX-FAIL"; exit 1; fi; echo "SYNTAX-OK"
 
 clean:
 	rm -rf build
