@@ -75,3 +75,37 @@ jobs:
           python3 .github/fireworks/test_scope_agent.py
           python3 .github/fireworks/test_union_journal.py
           python3 .github/fireworks/test_quota.py
+
+      # --- Relais : gardes InferHub (agent de conflits) ---
+      - name: Tests des gardes CI (inferhub)
+        run: |
+          python3 .github/inferhub/test_conflict_agent.py
+          python3 .github/inferhub/test_quota.py
+          python3 .github/inferhub/test_union_journal.py
+
+      # --- Relais : le cœur C11 et ses preuves (niveaux 0, 1, 2) ---
+      - name: Construction du cœur (bibliothèque, tests, explorateur, simulateur)
+        run: make -j"$(nproc)" all
+
+      - name: Taille des fichiers (< 500 lignes, règle user du budget CI)
+        run: make size
+
+      - name: Tests unitaires du cœur (niveau 0)
+        run: make test
+
+      - name: Exploration exhaustive du cœur (niveau 1, 100 000 états, une panne)
+        run: ./build/relais-explore --budget 100000 --faults 1
+
+      - name: Simulation à graine (niveau 2, 1 million de ticks)
+        run: ./build/relais-simulate --ticks 1000000 --seed 1
+
+      - name: Mutants M1 et M4 construits (échantillon, les 8 en campagne)
+        run: make -j"$(nproc)" mutants MUTANTS="1 4"
+
+      - name: Contrôle syntaxique de la couche QNX (sans SDP)
+        run: make -C target syntax
+
+      - name: Tests Python du banc et du rapport
+        run: |
+          python3 -m unittest discover -s host/bench -p 'test_*.py'
+          python3 -m unittest discover -s host/report -p 'test_*.py'

@@ -1,0 +1,26 @@
+{
+  "params": {
+    "T": 5,
+    "p": 1,
+    "N": 8
+  },
+  "ticks": 4000,
+  "trajectory": {
+    "kind": "slalom",
+    "amp": 0.6,
+    "freq": 0.5
+  },
+  "id": 7,
+  "name": "slalom-cut-A-to-actuator",
+  "seed": 1007,
+  "faults": [
+    {
+      "at_tick": 700,
+      "type": "cut",
+      "link": "A-actuator",
+      "direction": "both",
+      "ticks": 600
+    }
+  ],
+  "note": "the holder no longer reaches the actuator: handover to B"
+}

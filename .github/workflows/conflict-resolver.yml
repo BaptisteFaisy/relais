@@ -1,0 +1,142 @@
+name: conflict-resolver (inferhub)
+
+# Agent de conflits — le complément de la file Mergify.
+#
+# Mergify met en file, met à jour et merge (rebase) tant que la PR est CLEAN ou
+# BEHIND. Ce qu'elle ne sait pas faire, c'est résoudre un CONFLIT : une PR
+# DIRTY attend son auteur. Ce balayeur prend le relais :
+#
+#   1. liste les PR ouvertes en conflit (`mergeable == CONFLICTING`) ;
+#   2. clone, rebase sur `main` ;
+#   3. sur conflit, délègue chaque conflit élémentaire à l'agent
+#      `.github/inferhub/conflict_agent.py` (modèle InferHub `combo/cheap`,
+#      porte de compilation : une résolution qui ne compile pas n'est jamais
+#      poussée, plafond de saisines, cooldown) ;
+#   4. pousse avec bail (`--force-with-lease`) et commente la PR.
+#
+# Garde-fous : l'agent refuse de toucher `.github/` et `.mergify.yml`
+# (REFUSED_PREFIXES), les labels `hold` / `intervention-humaine` coupent tout,
+# et sans `INFERHUB_API_KEY` le balayeur saute proprement (l'auteur rebase à la
+# main). Coupe-circuit : variable de dépôt `INFERHUB_AGENT_RESOLVE=0`.
+#
+# Le push part avec `AUTOMERGE_PAT` (jeton du propriétaire) : un push signé
+# `github-actions[bot]` met les workflows en `action_required` et la PR reste
+# BLOCKED sans aucun check requis.
+#
+# Budget CI : 5 minutes par job (règle user).
+
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_run:
+    workflows: ["ci"]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      pr:
+        description: "Numéro de PR à traiter (vide = toutes les PR en conflit)"
+        required: false
+        default: ""
+
+permissions:
+  contents: write
+  pull-requests: write
+  checks: read
+
+concurrency:
+  group: conflict-resolver-${{ github.repository }}
+  cancel-in-progress: false
+
+env:
+  REPO: ${{ github.repository }}
+  GH_TOKEN: ${{ secrets.AUTOMERGE_PAT || github.token }}
+  INFERHUB_API_KEY: ${{ secrets.INFERHUB_API_KEY }}
+  INFERHUB_MODEL: ${{ vars.INFERHUB_MODEL }}
+  INFERHUB_BASE_URL: ${{ vars.INFERHUB_BASE_URL }}
+  INFERHUB_AGENT_RESOLVE: ${{ vars.INFERHUB_AGENT_RESOLVE }}
+
+jobs:
+  resolve:
+    name: resolve-conflicts
+    runs-on: ${{ fromJSON(vars.CI_RUNNER || '["self-hosted","relais-worker"]') }}
+    timeout-minutes: 5
+    steps:
+      - name: Checkout (superficiel, pour lire l'agent de main)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Balayer les PR en conflit
+        run: |
+          set -uo pipefail
+          export PATH="$HOME/bin:$HOME/.local/bin:/usr/local/bin:/usr/bin:/bin:$PATH"
+          command -v gh >/dev/null 2>&1 || { echo "gh absent du runner : saut"; exit 0; }
+          if [ "${INFERHUB_AGENT_RESOLVE:-1}" = "0" ]; then
+            echo "agent désactivé (INFERHUB_AGENT_RESOLVE=0) : saut"; exit 0
+          fi
+          if [ -z "${INFERHUB_API_KEY:-}" ]; then
+            echo "pas de secret INFERHUB_API_KEY : saut (rebase manuel)"; exit 0
+          fi
+
+          MANUEL="${{ github.event.inputs.pr }}"
+          if [ -n "$MANUEL" ]; then
+            LIGNES=$(gh pr view "$MANUEL" --repo "$REPO" \
+              --json number,headRefName,headRefOid,mergeable \
+              --jq '[.number, .headRefName, .headRefOid, .mergeable] | @tsv' 2>/dev/null || true)
+          else
+            LIGNES=$(gh pr list --repo "$REPO" --state open --limit 20 \
+              --json number,headRefName,headRefOid,mergeable \
+              --jq '.[] | select(.mergeable == "CONFLICTING") | [.number, .headRefName, .headRefOid, .mergeable] | @tsv' 2>/dev/null || true)
+          fi
+          if [ -z "$LIGNES" ]; then echo "aucune PR en conflit"; exit 0; fi
+
+          TRAVAIL="$(mktemp -d)"
+          git clone -q "https://x-access-token:${GH_TOKEN}@github.com/${REPO}.git" "$TRAVAIL/repo"
+          cd "$TRAVAIL/repo"
+          git config user.name "BaptisteFaisy"
+          git config user.email "119856854+BaptisteFaisy@users.noreply.github.com"
+          export GIT_EDITOR=true
+
+          TRAITEES=0
+          while IFS=$'\t' read -r PR BRANCHE SHA ETAT; do
+            [ -n "$PR" ] || continue
+            [ "$TRAITEES" -ge 3 ] && { echo "plafond de 3 PR par run atteint"; break; }
+            echo "=== PR #$PR ($BRANCHE) ==="
+            git checkout -q main
+            git fetch -q origin main
+            git branch -D "pr-$PR" >/dev/null 2>&1 || true
+            if ! git fetch -q origin "pull/$PR/head:pr-$PR"; then
+              echo "branche illisible : saut"; continue
+            fi
+            git checkout -q "pr-$PR"
+            if git rebase -q origin/main >/dev/null 2>&1; then
+              # Conflit disparu tout seul (ou rebase trivial) : on repousse.
+              if git push -q --force-with-lease="$BRANCHE:$SHA" origin "HEAD:$BRANCHE"; then
+                echo "PR #$PR rebasée sur main"
+              else
+                echo "PR #$PR a bougé entre-temps : prochain passage"
+              fi
+              TRAITEES=$((TRAITEES + 1))
+              continue
+            fi
+            # Conflit réel : l'agent résout, termine le rebase et pousse lui-même.
+            rc=0
+            git show origin/main:.github/inferhub/conflict_agent.py > /tmp/inferhub-agent.py 2>/dev/null || rc=9
+            if [ "$rc" = 0 ]; then
+              GH_TOKEN="$GH_TOKEN" python3 /tmp/inferhub-agent.py resolve \
+                --repo "$REPO" --pr "$PR" --branch "$BRANCHE" --sha "$SHA" || rc=$?
+            fi
+            git rebase --abort >/dev/null 2>&1 || true
+            git checkout -q main >/dev/null 2>&1 || true
+            case "$rc" in
+              0) echo "PR #$PR : conflit résolu par l'agent InferHub" ;;
+              2) echo "PR #$PR : rien à faire (agent)" ;;
+              *) echo "PR #$PR : échec ($rc), compte rendu sur la PR" ;;
+            esac
+            TRAITEES=$((TRAITEES + 1))
+          done <<< "$LIGNES"
+
+          cd /
+          rm -rf "$TRAVAIL" /tmp/inferhub-agent.py
+          echo "$TRAITEES PR(s) traitée(s)"
