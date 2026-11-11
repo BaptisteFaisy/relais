@@ -5,6 +5,13 @@ It is consistent with [CONTRACT.md](../CONTRACT.md) (frozen) and with the
 headers in `core/include/relais/` — the headers are the contract. Narrative
 context: [SPEC.md](SPEC.md) §4 and [SPEC-2.md](SPEC-2.md) §6.
 
+Every integer on the wire is written byte by byte, most significant byte first,
+so that a frame built on a little-endian PC is read identically by a big-endian
+target: the encoding never depends on the host, and a capture can be decoded
+with nothing but this table. The same rule holds for the journal the actuator
+writes, which is JSON lines — one object per line, ASCII, floats with `%.6g` —
+so that any tool can read it without a schema.
+
 All integers on the wire are **big-endian**, written byte by byte (no aliasing,
 no structure padding): the encoding is identical on PC and on QNX
 (`core/include/relais/frame.h`).
