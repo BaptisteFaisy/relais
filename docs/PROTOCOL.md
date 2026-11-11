@@ -5,6 +5,14 @@ It is consistent with [CONTRACT.md](../CONTRACT.md) (frozen) and with the
 headers in `core/include/relais/` — the headers are the contract. Narrative
 context: [SPEC.md](SPEC.md) §4 and [SPEC-2.md](SPEC-2.md) §6.
 
+Read it with one idea in mind: nothing in this protocol depends on a clock.
+The actuator beats the tick, every frame names the tick it targets, and a frame
+that arrives for any other tick is dropped. That is what makes a machine waking
+up from a freeze harmless — its order is stale by construction, before anybody
+has to decide whether it can be trusted. The trailer that authenticates a frame
+is a CRC-32C at the base level and a keyed SipHash-2-4 MAC at the full level;
+both are eight bytes, in the same place, so a receiver never has to guess.
+
 Every integer on the wire is written byte by byte, most significant byte first,
 so that a frame built on a little-endian PC is read identically by a big-endian
 target: the encoding never depends on the host, and a capture can be decoded
