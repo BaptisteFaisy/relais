@@ -4,6 +4,7 @@
 Lance : python3 -m unittest test_conflict_agent -v
 (depuis .github/inferhub/).
 """
+import json
 import os
 import shutil
 import subprocess
@@ -474,3 +475,58 @@ class PlafondFichiersTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ReponseSansContenuTest(unittest.TestCase):
+    """Un modèle de raisonnement peut rendre content null ou vide : l'agent doit
+    échouer proprement, jamais pousser un fichier vide ni lever un TypeError."""
+
+    def _reponse(self, message):
+        payload = json.dumps({"choices": [{"message": message}]}).encode("utf-8")
+
+        class FakeResp:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *exc):
+                return False
+
+            def read(self):
+                return payload
+
+        return FakeResp()
+
+    def _appelle(self, message):
+        with mock.patch("urllib.request.urlopen",
+                        return_value=self._reponse(message)):
+            return conflict_agent.ih_complete("http://x", "cle", "modele",
+                                              [{"role": "user", "content": "x"}])
+
+    def test_content_null_leve_agenterror(self):
+        with self.assertRaises(conflict_agent.AgentError) as ctx:
+            self._appelle({"content": None, "reasoning_content": "je réfléchis"})
+        self.assertIn("sans contenu", str(ctx.exception))
+
+    def test_content_vide_leve_agenterror(self):
+        with self.assertRaises(conflict_agent.AgentError):
+            self._appelle({"content": "   \n ", "reasoning_content": "..."})
+
+    def test_content_normal_passe(self):
+        self.assertEqual(self._appelle({"content": "résolu"}), "résolu")
+
+    def test_choices_manquant_leve_agenterror(self):
+        payload = json.dumps({"error": "boom"}).encode("utf-8")
+
+        class FakeResp:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *exc):
+                return False
+
+            def read(self):
+                return payload
+
+        with mock.patch("urllib.request.urlopen", return_value=FakeResp()):
+            with self.assertRaises(conflict_agent.AgentError):
+                conflict_agent.ih_complete("http://x", "c", "m", [])

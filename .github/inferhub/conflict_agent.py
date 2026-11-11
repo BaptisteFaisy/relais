@@ -202,9 +202,16 @@ def ih_complete(api_url, key, model, messages):
     except Exception as exc:                                   # noqa: BLE001
         raise AgentError("appel InferHub : %s" % str(exc)[:200])
     try:
-        return data["choices"][0]["message"]["content"]
+        content = data["choices"][0]["message"]["content"]
     except (KeyError, IndexError, TypeError):
         raise AgentError("réponse InferHub illisible (pas de choices[0])")
+    # Les modèles de raisonnement (combo/cheap rute vers un modèle qui pense
+    # avant de répondre) peuvent rendre content=null ou vide quand le budget de
+    # jetons part dans reasoning_content. Mieux vaut un échec net, commenté sur
+    # la PR, qu'un TypeError plus bas ou un fichier résolu vide poussé de force.
+    if not isinstance(content, str) or not content.strip():
+        raise AgentError("réponse InferHub sans contenu (raisonnement seul ?)")
+    return content
 
 
 def extract_file(text):
