@@ -96,7 +96,9 @@ jobs:
       - name: Exploration exhaustive du cœur (niveau 1, 100 000 états, une panne)
         run: |
           if [ -x ./build/relais-explore ]; then
-            ./build/relais-explore --budget 100000 --faults 1
+            ./build/relais-explore --budget 100000 --depth 12 --faults 1
+            ./build/relais-explore --budget 100000 --depth 12 --faults 1 --level complet
+            ./build/relais-explore --budget 150000 --depth 14 --faults 2
           else
             echo "explorateur absent de cet arbre : le niveau 1 n'est pas encore joué"
           fi
