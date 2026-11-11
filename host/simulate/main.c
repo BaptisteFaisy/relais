@@ -115,7 +115,11 @@ int main(int argc, char **argv) {
   relais_inv inv;
   relais_inv_init(&inv, &params);
   relais_inv_expect_certified(&inv, complete);
-  relais_inv_fault_free(&inv, world.fault_count == 0);
+  /* I7 ("no wrongful handover") is claimed with no injected fault, and the spec
+   * includes the loss of p consecutive orders in that claim (ROB-03). A channel
+   * that delays a frame by a whole tick is outside the timing hypothesis
+   * 2*delta + C + J <= T: it IS a fault, so I7 no longer applies to it. */
+  relais_inv_fault_free(&inv, world.fault_count == 0 && delay == 0);
   relais_inv_lossy_channel(&inv, loss > 0.0 || delay > 0);
   for (size_t i = 0; i < fault_spec_count; i++) {
     if (strstr(fault_specs[i], "bias") == NULL) continue;

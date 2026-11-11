@@ -1,0 +1,148 @@
+# Relais — measured campaign
+
+Everything below was produced on this repository, on a 12-core x86-64 PC running
+Linux, by `build/relais-simulate`, `build/relais-verify`, `make test`,
+`make campaign` and `python3 host/mutants/run_mutants.py`. Nothing here is a
+target or an estimate: these are the outputs of the commands you can re-run.
+
+Timings are **emulated**. Both computers are two state machines of the same
+core, driven by the same discrete-event loop; the numbers say nothing about a
+real ECU. They are published with their bounds, not as proven worst cases.
+
+---
+
+## 1. Headline results
+
+| Promise | Measured | Where |
+|---|---|---|
+| Level C: no tick without a fresh order after the holder dies | **max gap 0 ticks** (bound 0) | `--level complet --fault 500:death:0` |
+| Level C: continuity against the twin without fault | **max deviation 0.000000** (bound δ = 0.02) | same run |
+| Level S: bounded hole during the handover | **max gap 1 tick** (bound p+1 = 2) | `--fault 500:death:0` |
+| Level S: deviation during the handover, served by the will | **0.0253** of full scale (measured; δ is a level-C requirement, REP-06) | same run |
+| Mandate change exactly p+1 ticks after the holder's last order (PERF-05) | **2 ticks = p+1** | `core/tests/test_protocol.c` |
+| Both machines gone: safe state reached | fallback loop entered within **N+1 = 9 ticks = 45 ms** | `test_protocol.c`, campaign §5 |
+| No wrongful handover, 5000 ticks, no fault (I7) | **0 handovers, mandate stays 1** | `test_protocol.c` |
+| The bench sees its own defects | **8 mutants out of 8 flagged** | `host/mutants/run_mutants.py` |
+
+## 2. Scale of the campaign
+
+| Campaign | Runs | Failures |
+|---|---|---|
+| One million ticks, no fault, both levels (I7) | 6 | 0 |
+| Death swept over more than 100 instants, both roles, both levels | 404 | 0 |
+| Freezes in geometric progression, 1 tick to 1000 ticks (5 s), both roles, both levels | 44 | 0 |
+| Cuts of the six half-links, one way and both ways, both levels | 24 | 0 |
+| Nested faults (two faults, one before the other is over) | 50 | 0 |
+| Actuator restarts, mandate must survive (MAN-11) | 15 | 0 |
+| Forged orders, replayed stale orders, slow machines, process crashes, restarts, value faults | 510 | 0 |
+| **Total** | **1053** | **0** |
+
+Throughput: one million ticks in 2.0 to 4.0 s, i.e. 250 000 to 500 000 ticks per
+second per core. The level-C target of one billion ticks is a 40-minute run, kept
+out of the pull-request CI (5-minute budget) and run as a campaign.
+
+## 3. Channel model: what is tolerated, and the breaking point
+
+| Channel | Result (2000 ticks, level C) |
+|---|---|
+| No loss, no delay | 0 violations, max gap 0 |
+| 1 % loss, no burst longer than p | 0 violations, max gap 0, deviation 0 |
+| 5 % loss | 0 violations, max gap 0, deviation 0.0034 |
+| 10 % loss | 0 violations, max gap 1 (bound p+1 = 2), deviation 0.0057 |
+| **1 tick of delay** | **744 violations, max gap 9, deviation 0.365** |
+| 2 ticks of delay | 1602 violations, max gap 16 |
+
+The last two rows are the honest breaking point. The protocol assumes
+`2Δ + C + J ≤ T` (spec 4.2): a frame delayed by a whole period misses the tick it
+targets, and the actuator drops it — which is exactly what it must do (ACT-09).
+The miss counter then does its job and the mandate churns. Beyond its timing
+hypothesis the system degrades; it does not silently pretend. Losses inside the
+hypothesis, with no burst longer than p, are absorbed with no effect at all
+(ROB-02, ROB-03).
+
+## 4. Hostile frames
+
+| Attack | What happens |
+|---|---|
+| Order forged by a machine that is not the holder, carrying the current mandate and the current tick | rejected, counted `not_holder`, journaled; the applied value is unchanged (MAN-02, I3) |
+| Order replayed by the holder itself for a tick three periods old | rejected, counted `tick_missed` (ACT-09, SEC-03) |
+| Order carrying a future mandate | rejected, counted `mandate_future` (SEC-04) |
+| Frame with one flipped byte, or without the link key | rejected, counted `check` (SEC-01, SEC-02, DET-04) |
+| 200 000 random buffers thrown at the parser | no crash, no overrun (sentinel-guarded), never accepted with a bad control (ROB-09) |
+| Value fault: a machine adds a 0.3 bias to its orders | the actuator reports `disagreement` after 3 ticks, decertifies the second, lights the red lamp (DET-09) |
+
+## 5. The mutant bench (spec 7.6)
+
+Each mutant is the same core compiled with `-DRELAIS_MUTANT=n`. Each one faces a
+scenario that the **healthy core passes first** — a probe the nominal software
+fails would prove nothing, and the bench rejects it as `BAD-PROBE`.
+
+| Mutant | Defect | Must report | Verdict | Evidence |
+|---|---|---|---|---|
+| M1 | the actuator applies an order from anybody | I1 / I3 | FLAGGED | I5 at tick 600: the forged value was applied |
+| M2 | the actuator ignores the tick label | I3 / I5 | FLAGGED | I5 at tick 600: a stale order was applied |
+| M3 | the mandate is granted with no evidence of silence | DET-03 | FLAGGED | DET-03 at tick 602: granted while a holder was in place |
+| M4 | the will is played past its horizon | I6 / I8 | FLAGGED | I6 at tick 439: will played past its horizon |
+| M5 | the second keeps its own state instead of the replica | I4 / DET-09 | FLAGGED | I4 at tick 651: a tick without a fresh order, second certified |
+| M6 | the mandate restarts at zero when the actuator restarts | I2 | FLAGGED | I2 at tick 800: mandate went backwards |
+| M7 | the second orders on a mere suspicion, without the grant | MAN-08 (journal) | FLAGGED | 3 orders from a non-holder in the journal, **and the arbiter held**: 0 violations |
+| M8 | the lamp goes out while redundancy is still lost | I10 | FLAGGED | I10 at tick 4: redundancy lost and the lamp stayed off |
+
+M7 is the defence-in-depth case: the defect is in a machine, the arbiter absorbs
+it, and the journal is the evidence.
+
+## 6. Unit and protocol tests
+
+`make test` — seven binaries, **5630 checks**, all green:
+
+| Binary | Checks | Covers |
+|---|---|---|
+| `test_protocol` | 5026 | the handover tables of spec 4.5 tick by tick, the returning machine, the safe state, 5000 ticks without a wrongful handover, bit-identical replication, the mandate across an actuator restart, the degraded-mode time limit |
+| `test_frame` | 226 | the seven message types round-tripped field by field, the eight reject codes, the 512-byte bound |
+| `test_check` | 133 | CRC-32C and SipHash-2-4 against their published vectors, one flipped byte over 1000 positions |
+| `test_plant` | 93 | trajectories bounded, continuous, deterministic; rack stable over 100 000 steps; tracking error under 10 % |
+| `test_params` | 89 | defaults, `N ≥ p + 2 + 3`, every out-of-range bound, the parser, CMD-07 read in ticks |
+| `test_control` | 56 | bit-exact determinism, command bounds, exact replication, no bump on rebuild, will window, successor within δ |
+| `test_frame_fuzz` | 7 | 200 000 random buffers |
+
+Three defects were found by these checks while they were being written, and are
+fixed in the code rather than worked around in the tests:
+
+1. the will was based one tick off, so the fallback loop was reached one tick
+   late (I8);
+2. the replicated state was exported *after* the computation, which put the
+   second one tick ahead of its holder and broke the shadow comparison;
+3. the lamp stayed off during a substitution, hiding a loss of redundancy (I10).
+
+## 7. Continuous integration
+
+Every pull request runs, on self-hosted runners, in **2 min 32 s** (budget: 5 min
+per job, user rule): the docs sanity check, the CI guards' own tests (couche0,
+InferHub), the C build with `-Werror`, the file-size guard (no file over 500
+lines), the unit tests, the seeded simulation of one million ticks, a 40-run
+fault campaign, the M1/M4 mutant probes, the deterministic one-command demo, and
+the syntax check of the QNX layer.
+
+## 8. Acceptance criteria (spec section 13)
+
+**Socle — submittable**
+
+- [x] the level-S requirements are covered by tests (`core/tests/`)
+- [x] one command replays the demonstration, without root: `make demo`
+- [ ] 100 000 core states explored — the explorer is `host/explore/`, run it with `make explore`
+- [x] 404 swept deaths, 44 freezes up to 5 s, 24 link cuts, zero violation (simulated; the QEMU campaign is `host/bench/`)
+- [x] after a death, never more than p+2 ticks between two fresh orders (measured: 1)
+- [x] mutants M1 to M4 flagged
+- [ ] thirty minutes under load without a wrongful handover — 5000 ticks (25 s) done, the long run is `--ticks 360000`
+- [x] public repository, Apache-2.0, English README
+- [ ] video under three minutes (to be recorded)
+
+**Complet — the target version**
+
+- [x] the level-C requirements are covered by tests
+- [ ] ten million states explored with two faults; one billion simulated ticks (40 min, run as a campaign)
+- [x] 404 swept deaths, 44 freezes, 24 cuts, 50 nested faults: zero tick without a fresh order with a certified second
+- [x] the eight mutants are flagged
+- [ ] twelve hours under load without a wrongful handover; three worst cases explained by a kernel trace
+- [x] an intruding process is refused by the security policy (`image/`, SEC-05)
+- [x] safety document (`docs/SAFETY.md`) and tutorial (`codelab/`)

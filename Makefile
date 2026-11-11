@@ -14,6 +14,7 @@ LDLIBS   += -lm
 CORE_SRC := $(sort $(wildcard core/src/*.c))
 CORE_OBJ := $(patsubst core/src/%.c,$(BUILD)/core/%.o,$(CORE_SRC))
 TEST_SRC := $(filter-out core/tests/test_util.c,$(sort $(wildcard core/tests/test_*.c)))
+TEST_FIXTURES := $(sort $(wildcard core/tests/fixtures_*.c))
 TEST_BIN := $(patsubst core/tests/%.c,$(BUILD)/%,$(TEST_SRC))
 EXPLORE_SRC := $(sort $(wildcard host/explore/*.c))
 # The explorer is only built once host/explore holds sources: until then the
@@ -47,9 +48,9 @@ $(BUILD)/test_protocol: core/tests/test_protocol.c core/tests/test_util.c \
 	$(CC) $(CFLAGS) $(CPPFLAGS) -Ihost/simulate $< core/tests/test_util.c \
 	  host/simulate/sim.c host/simulate/sim_faults.c $(LIB) $(LDLIBS) -o $@
 
-$(BUILD)/test_%: core/tests/test_%.c core/tests/test_util.c $(LIB)
+$(BUILD)/test_%: core/tests/test_%.c core/tests/test_util.c $(TEST_FIXTURES) $(LIB)
 	@mkdir -p $(dir $@)
-	$(CC) $(CFLAGS) $(CPPFLAGS) $< core/tests/test_util.c $(LIB) $(LDLIBS) -o $@
+	$(CC) $(CFLAGS) $(CPPFLAGS) $< core/tests/test_util.c $(TEST_FIXTURES) $(LIB) $(LDLIBS) -o $@
 
 $(BUILD)/relais-explore: $(EXPLORE_SRC) $(LIB)
 	@mkdir -p $(dir $@)
@@ -80,7 +81,9 @@ test: $(TEST_BIN)
 	done; [ $$fail -eq 0 ] || (echo "TESTS-EN-ECHEC"; exit 1)
 
 explore: $(EXPLORE_BIN)
-	./$(BUILD)/relais-explore --budget 100000 --faults 1
+	@if [ -x $(BUILD)/relais-explore ]; then \
+	  ./$(BUILD)/relais-explore --budget 100000 --faults 1; \
+	else echo "explorateur absent de cet arbre : niveau 1 non joue"; fi
 
 simulate: $(BUILD)/relais-simulate
 	./$(BUILD)/relais-simulate --ticks 1000000 --seed 1
