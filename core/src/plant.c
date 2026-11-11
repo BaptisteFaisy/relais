@@ -31,9 +31,14 @@ void relais_plant_init(relais_plant *pl, float pos0, uint32_t seed) {
  * never silently diverge into NaN and hide a violation (spec 7.4). */
 void relais_plant_step(relais_plant *pl, float value, float disturbance, float dt) {
   if (pl == NULL || !(dt > 0.0f)) return;
-  float acc = (PLANT_GAIN * value - PLANT_DAMP * pl->vel) / PLANT_TAU + disturbance;
+  /* Exact integration of the velocity loop: stable for the whole period range
+   * the specification allows (CMD-01) and for slow motion (CMD-07), where an
+   * explicit Euler step of 50 ms against a 20 ms time constant would oscillate. */
+  float alpha = 1.0f - expf(-dt / PLANT_TAU);
+  float target = (PLANT_GAIN / PLANT_DAMP) * value;
+  float acc = (target - pl->vel) * alpha + disturbance * dt;
   if (!isfinite(acc)) acc = 0.0f;
-  pl->vel += acc * dt;
+  pl->vel += acc;
   if (!isfinite(pl->vel)) pl->vel = 0.0f;
   if (pl->vel > 10.0f * PLANT_GAIN) pl->vel = 10.0f * PLANT_GAIN;
   if (pl->vel < -10.0f * PLANT_GAIN) pl->vel = -10.0f * PLANT_GAIN;

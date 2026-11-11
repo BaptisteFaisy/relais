@@ -26,6 +26,9 @@ void relais_params_default(relais_params *p);
 bool relais_params_valid(const relais_params *p, char *why, size_t why_len);
 uint32_t relais_params_period_ms(const relais_params *p);
 double relais_params_period_s(const relais_params *p);
+/* Physical step of one tick: what the rack model, the trajectory and the law
+ * integrate. Slow motion stretches the wall clock, never the physics (CMD-07). */
+double relais_params_step_s(const relais_params *p);
 /* Parse "T=5,p=1,N=8" style overrides; unknown keys are rejected. */
 bool relais_params_parse(relais_params *p, const char *spec, char *why, size_t why_len);
 

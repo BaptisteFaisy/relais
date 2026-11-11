@@ -54,7 +54,7 @@ void relais_ctl_init(relais_ctl_state *s, const relais_params *p) {
  * command for tick n+1. CMD-06: bounded in amplitude and in rate of change. */
 float relais_ctl_step(relais_ctl_state *s, const relais_meas *m, const relais_params *p) {
   if (s == NULL || m == NULL || p == NULL) return 0.0f;
-  float dt = (float)relais_params_period_s(p);
+  float dt = (float)relais_params_step_s(p);
   /* The slope of the steering request, measured over one period and bounded,
    * is what lets the will follow the manoeuvre instead of freezing it. */
   float rate = (m->setpoint - s->prev_setpoint) / dt;
@@ -142,7 +142,7 @@ void relais_testament_fill(const relais_ctl_state *s, const relais_meas *m,
   relais_plant predicted;
   relais_plant_init(&predicted, m->pos, 0);
   predicted.vel = m->vel;
-  float dt = (float)relais_params_period_s(p);
+  float dt = (float)relais_params_step_s(p);
   float last = copy.last_value;
   for (uint8_t i = 0; i < n; i++) {
     /* The rack moves under the last command before the next one is computed,

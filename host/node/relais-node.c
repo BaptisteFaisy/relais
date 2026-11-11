@@ -139,7 +139,9 @@ int main(int argc, char **argv) {
   struct sockaddr_in local;
   memset(&local, 0, sizeof local);
   local.sin_family = AF_INET;
-  local.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+  /* INADDR_ANY, not loopback: the peer may be a virtual machine reached through
+   * QEMU's user network, and slirp delivers on the host's own stack. */
+  local.sin_addr.s_addr = htonl(INADDR_ANY);
   local.sin_port = htons((uint16_t)port);
   if (bind(cfg.sock, (struct sockaddr *)&local, sizeof local) != 0) {
     perror("bind");
