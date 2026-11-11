@@ -1,0 +1,118 @@
+name: static-analysis
+
+# Mission M14 — static analysis + reproducible build.
+#
+# Two jobs, both bounded to 5 minutes (CI budget rule, .github/ci-budget):
+#   * static-analysis : clang-tidy / cppcheck on core/ and host/. Nothing is
+#     installed — if a tool is absent on the runner the step says so and skips
+#     cleanly. A gcc -fanalyzer advisory pass always runs (gcc is present).
+#   * reproducible-build : the same tree compiled twice, in two different
+#     directories, with -ffile-prefix-map + SOURCE_DATE_EPOCH, must yield
+#     byte-identical binaries (cmp).
+#
+# No existing workflow is modified.
+
+on:
+  pull_request:
+  merge_group:
+  workflow_dispatch:
+
+concurrency:
+  group: static-analysis-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  static-analysis:
+    name: static-analysis
+    runs-on: [self-hosted, linux, x64, relais-worker]
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+          clean: false
+
+      - name: Clean workspace
+        shell: bash
+        run: git clean -ffdx -e build
+
+      - name: cppcheck (skipped cleanly if absent)
+        shell: bash
+        run: |
+          if command -v cppcheck >/dev/null 2>&1; then
+            cppcheck --enable=warning --inline-suppr --error-exitcode=1 \
+              --suppress=missingIncludeSystem -Icore/include core host
+          else
+            echo "cppcheck absent on this runner — step skipped (nothing installed)."
+          fi
+
+      - name: clang-tidy (skipped cleanly if absent)
+        shell: bash
+        run: |
+          if command -v clang-tidy >/dev/null 2>&1; then
+            # No compile_commands.json on the runner; run a syntax-only pass.
+            find core host -name '*.c' -print0 | \
+              xargs -0 -n1 clang-tidy --quiet -- \
+                -std=c11 -D_POSIX_C_SOURCE=200809L -Icore/include || true
+          else
+            echo "clang-tidy absent on this runner — step skipped (nothing installed)."
+          fi
+
+      - name: gcc -fanalyzer advisory pass (always available)
+        shell: bash
+        run: |
+          # Advisory only: -fanalyzer warnings are reported, never fatal, so a
+          # false positive cannot red the build. Bounded to core/ to stay fast.
+          set +e
+          for f in core/src/*.c; do
+            gcc -std=c11 -O1 -fanalyzer -D_POSIX_C_SOURCE=200809L \
+              -Icore/include -fsyntax-only "$f" 2>&1 | \
+              sed "s|^|$f: |"
+          done
+          echo "gcc -fanalyzer pass done (advisory)."
+
+  reproducible-build:
+    name: reproducible-build
+    runs-on: [self-hosted, linux, x64, relais-worker]
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+          clean: false
+
+      - name: Clean workspace
+        shell: bash
+        run: git clean -ffdx -e build
+
+      - name: Two deterministic builds in two directories
+        shell: bash
+        run: |
+          set -e
+          DET="-std=c11 -O2 -g -Wall -Wextra -Werror -Wshadow -Wconversion -Wno-sign-conversion -fno-strict-aliasing"
+          A="$RUNNER_TEMP/repro-a"; B="$RUNNER_TEMP/repro-b"
+          rm -rf "$A" "$B"; mkdir -p "$A" "$B"
+          cp -a ./. "$A/"; cp -a ./. "$B/"
+          ( cd "$A" && SOURCE_DATE_EPOCH=0 make -j"$(nproc)" all \
+              CFLAGS="$DET -ffile-prefix-map=$A=." BUILD=build )
+          ( cd "$B" && SOURCE_DATE_EPOCH=0 make -j"$(nproc)" all \
+              CFLAGS="$DET -ffile-prefix-map=$B=." BUILD=build )
+
+      - name: Compare binaries (cmp)
+        shell: bash
+        run: |
+          set -e
+          A="$RUNNER_TEMP/repro-a"; B="$RUNNER_TEMP/repro-b"
+          fail=0; n=0
+          while IFS= read -r f; do
+            n=$((n+1))
+            cmp -s "$A/$f" "$B/$f" || { echo "::error::not reproducible: $f"; fail=1; }
+          done < <(cd "$A" && find build -type f \
+                     \( -name '*.o' -o -name 'relais-*' -o -name 'test_*' \) | sort)
+          echo "compared $n artifact(s)"
+          [ "$fail" -eq 0 ] && echo "REPRODUCIBLE-OK"

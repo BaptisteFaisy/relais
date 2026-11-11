@@ -11,6 +11,11 @@ CFLAGS   ?= -std=c11 -O2 -g -Wall -Wextra -Werror -Wshadow -Wconversion \
 CPPFLAGS += -D_POSIX_C_SOURCE=200809L -Icore/include -Icore/tests -Iactuator -MMD -MP
 LDLIBS   += -lm
 
+# Coverage build: slowest machine code, instrumentation for gcov. Used only by
+# the `coverage` target (mission M14); `make all` stays -O2 and clang-free.
+COVERAGE_CFLAGS := -std=c11 -O0 -g --coverage -Wall -Wextra -Werror -Wshadow \
+                   -Wconversion -Wno-sign-conversion -fno-strict-aliasing
+
 CORE_SRC := $(sort $(wildcard core/src/*.c))
 CORE_OBJ := $(patsubst core/src/%.c,$(BUILD)/core/%.o,$(CORE_SRC))
 TEST_SRC := $(filter-out core/tests/test_util.c,$(sort $(wildcard core/tests/test_*.c)))
@@ -29,7 +34,8 @@ LIB := $(BUILD)/librelais.a
 
 MUTANTS := 1 2 3 4 5 6 7 8
 
-.PHONY: all test explore simulate verify mutants report demo campaign clean size
+.PHONY: all test explore simulate verify mutants report demo campaign clean size \
+        coverage
 all: $(LIB) $(TEST_BIN) $(EXPLORE_BIN) $(BUILD)/relais-simulate \
      $(BUILD)/relais-actuator $(BUILD)/relais-verify $(BUILD)/relais-node \
      $(BUILD)/relais-bridge
@@ -126,6 +132,18 @@ campaign: $(BUILD)/relais-simulate $(BUILD)/relais-verify
 size:
 	@for f in $(shell find core actuator host target -name '*.c' -o -name '*.h' -o -name '*.py' 2>/dev/null); do \
 	  n=$$(wc -l < $$f); [ $$n -lt 500 ] || echo "TOO LONG: $$f ($$n)"; done; echo "size check done"
+
+# --- Coverage (mission M14) ---
+# Rebuilds core/ and host/ with --coverage, replays the unit tests, the seeded
+# simulator over a fixed fault set, the offline verifier and the explorer, then
+# runs gcov and emits a per-file summary. The curated docs/COVERAGE.md holds the
+# uncovered-line justifications; this target regenerates the raw numbers.
+coverage:
+	$(MAKE) BUILD=$(BUILD)/cov CFLAGS="$(COVERAGE_CFLAGS)" clean all
+	python3 host/quality/coverage_driver.py --build $(BUILD)/cov
+	python3 host/quality/gcov_report.py --root . --objects $(BUILD)/cov/core \
+	  --src-dir core/src --out $(BUILD)/cov/coverage.summary.md
+	@cat $(BUILD)/cov/coverage.summary.md
 
 clean:
 	rm -rf $(BUILD)
