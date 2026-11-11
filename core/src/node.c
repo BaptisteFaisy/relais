@@ -109,7 +109,8 @@ static void make_cession(const relais_node_sm *s, uint8_t reason, relais_msg *m)
  * bits (CMD-03). The bench may add a bias to inject a value fault (INJ-10). */
 static float compute(relais_node_sm *s, const relais_meas *meas) {
   s->last_meas = *meas;
-  float value = relais_ctl_step(&s->ctl, meas, &s->params);
+  float value = s->law.step != NULL ? s->law.step(s->law.ctx, meas, &s->params)
+                                    : relais_ctl_step(&s->ctl, meas, &s->params);
   if (s->bias != 0.0f) value += s->bias;
   return relais_clamp_value(value, &s->params);
 }
@@ -130,7 +131,9 @@ static void as_holder(relais_node_sm *s, const relais_msg *statut, relais_node_o
   relais_tick target = statut->tick + 1;
   if (die_here(s, RELAIS_DP_P1, o)) return; /* STATUT received, before computing */
   uint8_t snapshot[RELAIS_CTL_STATE_MAX];
-  uint8_t snapshot_len = relais_ctl_export(&s->ctl, snapshot, sizeof snapshot);
+  uint8_t snapshot_len = s->law.export_state != NULL
+                             ? s->law.export_state(s->law.ctx, snapshot, sizeof snapshot)
+                             : relais_ctl_export(&s->ctl, snapshot, sizeof snapshot);
   float previous = s->ctl.last_value;
   float value = compute(s, &statut->meas);
   if (die_here(s, RELAIS_DP_P2, o)) return; /* computed, before any send */
@@ -261,7 +264,11 @@ void relais_node_on_etat(relais_node_sm *s, const relais_msg *etat, relais_node_
     return;
   }
   if (!RELAIS_MUT(RELAIS_M5_NO_STATE_IMPORT)) {
-    if (!relais_ctl_import(&s->ctl, etat->ctl_state, etat->ctl_state_len)) return;
+    bool imported = s->law.import_state != NULL
+                        ? s->law.import_state(s->law.ctx, etat->ctl_state,
+                                              etat->ctl_state_len)
+                        : relais_ctl_import(&s->ctl, etat->ctl_state, etat->ctl_state_len);
+    if (!imported) return;
   }
   s->last_etat = etat->tick;
   s->replica_age = 0;
@@ -324,6 +331,16 @@ void relais_node_on_handover(relais_node_sm *s, relais_node_out *o) {
 
 void relais_node_set_bias(relais_node_sm *s, float bias) {
   if (s != NULL) s->bias = bias;
+}
+
+void relais_node_set_law(relais_node_sm *s, const relais_law *law) {
+  if (s == NULL) return;
+  if (law == NULL) {
+    memset(&s->law, 0, sizeof s->law);
+    return;
+  }
+  s->law = *law;
+  if (s->law.init != NULL) s->law.init(s->law.ctx, &s->params);
 }
 
 void relais_node_arm_death(relais_node_sm *s, relais_death_point dp, relais_tick at) {

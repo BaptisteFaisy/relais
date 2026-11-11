@@ -1,0 +1,28 @@
+#!/bin/sh
+# Relais — what runs at boot, in order. Called by mkqnximage (-S) or by the
+# buildfile of the image; keep it small: QNX-08 measures the delay from the
+# kernel start to a certified second, and every line here costs.
+
+# 1. The network stack is a process like any other (spec 1.4). Its priority on
+#    the protocol's frames is what feasibility probe E5 measures.
+io-sock -dlink=auto devs-vtnet_pci.so &
+if_up -w en0 || if_up -w em0
+
+# 2. Which of the two machines are we? One image, two identities, told apart by
+#    the MAC address (spec 3.4).
+. /usr/bin/identity.sh
+
+# 3. Addresses. The actuator lives on the PC at level S, in a third guest at
+#    level C; the peer is the other computer. Both are on the loopback-free
+#    links the bench wires with -netdev dgram (see host/bench/QEMU.md).
+ifconfig en0 ${RELAIS_ADDR} netmask 255.255.255.0 up
+
+# 4. Supervision starts the three processes and restarts them (QNX-06). A
+#    restarted process is seen by its peers through the closing of the
+#    connection, so the machine cedes the mandate within the tick instead of
+#    waiting for a silence timeout (DET-05, QNX-05).
+/usr/bin/ham.script &
+
+# 5. Kernel tracing, so the critical path can be shown with its priorities
+#    (OBS-03, QNX-04). Cheap, and it is the evidence for PERF-07.
+tracelogger -b 4m &

@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Relais — typed security policy (SEC-05, QNX-07).
+
+  STATUS: a draft to be validated against the SDP 8.0 schema and its policy
+  compiler before anything is claimed about it. The intent is what matters here,
+  and the intent is testable: an intruding process that tries to open a socket,
+  to serve /dev/relais, or to talk to relais-core is refused, and the refusal is
+  shown (QNX-07, and the acceptance criterion "an intruding process is refused
+  by the security policy").
+
+  Three types, three rights, and the test commands only exist in a build that is
+  not the production image.
+-->
+<policy>
+  <!-- The sockets belong to one process. Nobody else opens a network socket, so
+       a compromised neighbour cannot forge a frame, and cannot even listen. -->
+  <type name="relais-net" provides="network.client">
+    <allow>socket.create inet dgram</allow>
+    <allow>socket.bind</allow>
+    <allow>socket.sendto</allow>
+    <allow>socket.recvfrom</allow>
+    <allow>message.send to="relais-core"</allow>
+    <deny>filesystem.write</deny>
+  </type>
+
+  <!-- The protocol owns the device and the mandate. It cannot open a socket,
+       which is what makes relais-net the only way in or out. -->
+  <type name="relais-core" provides="filesystem.server">
+    <allow>name.attach /dev/relais</allow>
+    <allow>message.receive from="relais-net"</allow>
+    <allow>message.send to="relais-ctl"</allow>
+    <allow>message.receive from="relaisctl"</allow>
+    <deny>socket.create</deny>
+  </type>
+
+  <!-- The control law: no socket, no device, no clock. A pure service. -->
+  <type name="relais-ctl">
+    <allow>message.receive from="relais-core"</allow>
+    <deny>socket.create</deny>
+    <deny>name.attach</deny>
+    <deny>process.spawn</deny>
+  </type>
+
+  <!-- The service tool. Present in the test image, ABSENT from the production
+       image: RELAIS_PRODUCTION is defined at build time and relaisctl is then
+       not embedded at all (see image/fragments/buildfile). -->
+  <type name="relaisctl">
+    <allow>message.send to="relais-core"</allow>
+    <allow>filesystem.read /dev/relais</allow>
+    <deny>socket.create</deny>
+    <deny>process.spawn</deny>
+  </type>
+
+  <!-- Anything else on the machine: no path to the protocol at all. This is the
+       line the demonstration shows with an intruding process. -->
+  <type name="untrusted">
+    <deny>message.send to="relais-core"</deny>
+    <deny>message.send to="relais-ctl"</deny>
+    <deny>filesystem.read /dev/relais</deny>
+    <deny>socket.create</deny>
+  </type>
+</policy>

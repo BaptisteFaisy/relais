@@ -71,7 +71,7 @@ static void send_to(int fd, const struct sockaddr_in *dst, const relais_msg *m,
 static void dispatch(const node_cfg_t *cfg, const relais_node_out *out) {
   for (uint8_t i = 0; i < out->count; i++) {
     const relais_msg *m = &out->out[i];
-    bool to_peer = (m->type == RELAIS_MSG_ETAT || m->type == RELAIS_MSG_SUIVI);
+    bool to_peer = relais_msg_to_peer(m->type);
     send_to(cfg->sock, to_peer ? &cfg->peer : &cfg->actuator, m, &cfg->key);
   }
 }

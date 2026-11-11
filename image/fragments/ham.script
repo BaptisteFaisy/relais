@@ -1,0 +1,36 @@
+#!/bin/sh
+# Relais — supervision by the QNX High Availability Manager (QNX-06).
+#
+# Three isolated processes, three fixed priorities, and the critical path stays
+# prioritaire end to end (spec 1.4, CMD-04). HAM restarts whichever one dies;
+# the others learn about it through the closing of the connection, not by
+# polling, and the machine cedes its mandate in the same tick (DET-05, QNX-05).
+#
+# Order matters: the law server first, then the protocol, then the sockets. A
+# process that starts before the one it connects to would have to retry.
+
+. /usr/bin/identity.sh
+
+ham -f - <<HAM
+# relais-ctl: the control law as a service (CMD-09, priority 60)
+load /usr/bin/relais-ctl -p 60
+start relais-ctl
+
+# relais-core: the protocol state machine and /dev/relais (priority 61)
+load /usr/bin/relais-core -p 61 --self "$RELAIS_SELF"
+start relais-core
+
+# relais-net: the sockets, and nothing else (priority 62, SEC-05)
+load /usr/bin/relais-net -p 62 \
+     --actuator "$RELAIS_ACTUATOR":7100 \
+     --peer "$RELAIS_PEER":7101
+start relais-net
+
+# A crash is restarted where it was; two crashes in five seconds mean the
+# machine is not trustworthy: cede the mandate and stay a second.
+restart relais-ctl
+restart relais-core
+restart relais-net
+deadline 5000 2
+HAM
+HAM

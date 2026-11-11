@@ -110,6 +110,10 @@ void relais_msg_clear(relais_msg *m) {
   if (m != NULL) memset(m, 0, sizeof *m);
 }
 
+bool relais_msg_to_peer(relais_msg_type type) {
+  return type == RELAIS_MSG_ETAT || type == RELAIS_MSG_SUIVI;
+}
+
 static size_t etat_payload(const relais_msg *m) {
   return 5u + (size_t)m->ctl_state_len;
 }

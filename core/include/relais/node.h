@@ -29,9 +29,23 @@ typedef enum {
   RELAIS_DP_P9 = 9  /* reintegration, before certification */
 } relais_death_point;
 
+/* CMD-09: the control law can live somewhere else -- another module, another
+ * process (spec 4.9 puts it in relais-ctl, priority 60), or a dissimilar backup
+ * (DEG-08). Three functions plus init: the protocol does not change. When no law
+ * is installed the node uses the built-in one of core/src/control.c, which is
+ * what every test and every proof so far has exercised. */
+typedef struct {
+  void *ctx;
+  void (*init)(void *ctx, const relais_params *p);
+  float (*step)(void *ctx, const relais_meas *m, const relais_params *p);
+  uint8_t (*export_state)(void *ctx, uint8_t *buf, size_t cap);
+  bool (*import_state)(void *ctx, const uint8_t *buf, size_t len);
+} relais_law;
+
 typedef struct {
   relais_params params;
   relais_node self;
+  relais_law law;           /* all NULL: use the built-in control law */
   relais_role role;
   relais_mandate mandate;      /* the mandate the actuator gave us */
   relais_mandate seen_mandate; /* last mandate read in a STATUT */
@@ -86,6 +100,9 @@ void relais_node_on_local_fault(relais_node_sm *s, uint8_t reason, relais_node_o
 void relais_node_on_handover(relais_node_sm *s, relais_node_out *o);
 
 void relais_node_set_bias(relais_node_sm *s, float bias);
+/* Install an external control law (CMD-09). Pass NULL to go back to the
+ * built-in one. */
+void relais_node_set_law(relais_node_sm *s, const relais_law *law);
 void relais_node_arm_death(relais_node_sm *s, relais_death_point dp, relais_tick at);
 /* Diagnostic text for /dev/relais/status (OBS-02). */
 int relais_node_status_text(const relais_node_sm *s, char *buf, size_t cap);
