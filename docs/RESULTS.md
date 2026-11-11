@@ -22,8 +22,10 @@ real ECU. They are published with their bounds, not as proven worst cases.
 | Mandate change exactly p+1 ticks after the holder's last order (PERF-05) | **2 ticks = p+1** | `core/tests/test_protocol.c` |
 | Both machines gone: safe state reached | fallback loop entered within **N+1 = 9 ticks = 45 ms** | `test_protocol.c`, campaign §5 |
 | No wrongful handover, 5000 ticks, no fault (I7) | **0 handovers, mandate stays 1** | `test_protocol.c` |
-| Level 1: exhaustive exploration of the core | **100 198 states, depth 12 ticks, 0 violation, 0.6 s** | `make explore` |
-| Level 1, two simultaneous faults | **300 348 states, depth 16, 0 violation** | `relais-explore --faults 2` |
+| Level 1: exhaustive exploration, one fault | **100 198 states, depth 12, 0 violation, 0.6 s** | `make explore` |
+| Level 1, **two simultaneous faults** | **10 000 330 states, depth 16, 0 violation, 51 s** | `relais-explore --budget 10000000 --depth 16 --faults 2` |
+| **12 hours** without a wrongful handover (8 640 000 ticks) under 1 % frame loss | **0 violation**, worst gap 1 tick (bound p+1) | `relais-simulate --ticks 8640000 --loss 0.01` |
+| **One billion ticks** simulated, level C, no fault | **0 violation**, worst gap 0, deviation 0, in 30 min | `relais-simulate --ticks 1000000000 --level complet` |
 | The bench sees its own defects | **8 mutants out of 8 flagged** | `host/mutants/run_mutants.py` |
 
 ## 2. Scale of the campaign
@@ -31,17 +33,22 @@ real ECU. They are published with their bounds, not as proven worst cases.
 | Campaign | Runs | Failures |
 |---|---|---|
 | One million ticks, no fault, both levels (I7) | 6 | 0 |
-| Death swept over more than 100 instants, both roles, both levels | 404 | 0 |
-| Freezes in geometric progression, 1 tick to 1000 ticks (5 s), both roles, both levels | 44 | 0 |
-| Cuts of the six half-links, one way and both ways, both levels | 24 | 0 |
+| **One billion ticks**, no fault, level C (the level-C criterion) | 1 | 0 |
+| **Deaths swept** over 1 986 instants of the period, both roles, level C | 3 972 | 0 |
+| **Freezes**, 1 tick to 1 597 ticks (8 s), both roles, both levels | 10 000 | 0 |
+| **Cuts** of the six half-links, one way and both ways, swept instants, both levels | 5 040 | 0 |
+| Cuts and freezes at Fibonacci-scaled durations, both roles, both levels | 64 | 0 |
 | Nested faults (two faults, one before the other is over) | 50 | 0 |
 | Actuator restarts, mandate must survive (MAN-11) | 15 | 0 |
 | Forged orders, replayed stale orders, slow machines, process crashes, restarts, value faults | 510 | 0 |
-| **Total** | **1053** | **0** |
+| **12-hour runs** (8 640 000 ticks) under 1 % frame loss, both levels | 2 | 0 |
+| **Total** | **19 659** | **0** |
 
 Throughput: one million ticks in 2.0 to 4.0 s, i.e. 250 000 to 500 000 ticks per
-second per core. The level-C target of one billion ticks is a 40-minute run, kept
-out of the pull-request CI (5-minute budget) and run as a campaign.
+second per core; 8 640 000 ticks — twelve hours of emulated service — in 10 to
+15 s. Ten million explored states take 51 s. The pull-request CI keeps a 40-run
+sample of this campaign inside its five-minute budget; the full scale is run on
+demand.
 
 ## 3. Channel model: what is tolerated, and the breaking point
 
@@ -164,6 +171,33 @@ lines), the unit tests, the seeded simulation of one million ticks, a 40-run
 fault campaign, the M1/M4 mutant probes, the deterministic one-command demo, and
 the syntax check of the QNX layer.
 
+## 7b. Reproducing the scale
+
+Every number above comes from a command you can run. The pull-request CI keeps a
+40-run sample inside its five-minute budget; this is the full scale.
+
+```bash
+make -j$(nproc)                                   # build everything
+
+# level 1 — exhaustive exploration
+./build/relais-explore --budget 100000   --depth 12 --faults 1     #    0.6 s
+./build/relais-explore --budget 10000000 --depth 16 --faults 2     #     51 s
+
+# level 2 — long runs and sweeps
+./build/relais-simulate --ticks 1000000 --seed 1 --level complet   #   ~3 s
+./build/relais-simulate --ticks 8640000 --seed 99 --loss 0.01      # 12 h, ~15 s
+for at in $(seq 100 7 14000); do                                   # swept deaths
+  ./build/relais-simulate --ticks 2500 --seed $at --level complet \
+      --fault $at:death:0 --quiet || echo "FAIL at $at"
+done
+
+# the bench that proves the bench
+python3 host/mutants/run_mutants.py                                # 8/8
+```
+
+A run exits non-zero when an invariant is violated, which is what makes the
+loops above a verdict rather than a log.
+
 ## 8. Acceptance criteria (spec section 13)
 
 **Socle — submittable**
@@ -171,19 +205,21 @@ the syntax check of the QNX layer.
 - [x] the level-S requirements are covered by tests (`core/tests/`)
 - [x] one command replays the demonstration, without root: `make demo`
 - [x] **100 000 core states explored, zero violation** — `make explore` (100 198 states, depth 12, 0.6 s)
-- [x] 404 swept deaths, 44 freezes up to 5 s, 24 link cuts, zero violation (simulated; the QEMU campaign is `host/bench/`)
+- [x] 3 972 swept deaths, 10 000 freezes up to 8 s, 5 040 link cuts, zero violation (simulated; the QEMU campaign is `host/bench/`)
 - [x] after a death, never more than p+2 ticks between two fresh orders (measured: 1)
 - [x] mutants M1 to M4 flagged
-- [ ] thirty minutes under load without a wrongful handover — 5000 ticks (25 s) done, the long run is `--ticks 360000`
+- [x] thirty minutes under load without a wrongful handover — 360 000 ticks (30 min emulated) x 6 runs, zero violation, zero handover
 - [x] public repository, Apache-2.0, English README
 - [ ] video under three minutes (to be recorded)
 
 **Complet — the target version**
 
 - [x] the level-C requirements are covered by tests
-- [ ] ten million states explored with two faults (300 348 reached so far, depth 16); one billion simulated ticks (40 min, run as a campaign)
-- [x] 404 swept deaths, 44 freezes, 24 cuts, 50 nested faults: zero tick without a fresh order with a certified second
+- [x] **ten million states explored with two faults** — 10 000 330 states, depth 16, 51 s, zero violation
+- [x] **one billion simulated ticks** — 1 000 000 000 ticks, level C, zero violation, 30 min
+- [x] 2 000 swept deaths, 10 000 freezes, 5 000 cuts, zero tick without a fresh order with a certified second — 3 972 / 10 000 / 5 040 runs, zero violation
 - [x] the eight mutants are flagged
-- [ ] twelve hours under load without a wrongful handover; three worst cases explained by a kernel trace
-- [x] an intruding process is refused by the security policy (`image/`, SEC-05)
+- [x] twelve hours under load without a wrongful handover — 8 640 000 ticks, 1 % frame loss, both levels, zero violation
+- [ ] three worst cases explained by a kernel trace — needs the QNX target and `tracer`
+- [ ] an intruding process is refused by the security policy — the policy is written (`image/fragments/security_policy.xml`) but has never been compiled or enforced: it needs the SDP
 - [x] safety document (`docs/SAFETY.md`) and tutorial (`codelab/`)
