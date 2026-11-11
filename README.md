@@ -175,7 +175,7 @@ hypotheses (spec §14):
 | Level 1 — exhaustive exploration of the core | **in progress**: `host/explore/`; `make explore` says so instead of pretending |
 | Level 2 — seeded simulation and campaign | **done**: 1053 fault runs, zero violation (`make campaign`, `docs/RESULTS.md`) |
 | Level 3 — real faults under QEMU | bench written (`host/bench/`), **not yet run**: it needs a QNX image built with `mkqnximage`, and the six feasibility probes E1–E6 of spec §10 are the first thing to run on it |
-| The QNX processes and the image (`target/`, `image/`) | **in progress**; `make -C target syntax` is the check that runs in CI until the SDP is available |
+| The QNX processes and the image (`target/`, `image/`) | **written, never run**: five processes (net, core, ctl, relaisctl, actuator) plus the `mkqnximage` fragments. `make -C target syntax` checks all of them under `-Werror` against QNX stubs; that proves the code is well-formed C, **not** that it boots — seven things still need the SDP and a real guest, listed in `target/README.md` |
 | Mutants (spec §7.6) | **done**, 8 of 8 flagged (`python3 host/mutants/run_mutants.py`) |
 | HTML campaign report (OBS-05) | **done** — standalone file, inline SVG, no script, no external resource: `python3 host/report/report.py --campaign runs/ --level complet` |
 | Video under three minutes | **to be recorded** |

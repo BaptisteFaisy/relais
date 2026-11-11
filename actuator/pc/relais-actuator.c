@@ -23,6 +23,7 @@
 
 #include "relais/arbiter.h"
 #include "relais/control.h"
+#include "journal_writer.h"
 #include "relais/journal.h"
 
 #define MAX_PEERS 2
@@ -110,58 +111,6 @@ static void publish_statut(int fd, const peer_t *peers, const relais_msg *statut
   }
 }
 
-static bool write_header(const config_t *cfg, const relais_arb *arb) {
-  relais_jr_header h;
-  memset(&h, 0, sizeof h);
-  h.params = cfg->params;
-  h.mutant = relais_mutant_id();
-  h.scenario_id = (uint32_t)cfg->traj.seed;
-  snprintf(h.scenario, sizeof h.scenario, "%s", relais_mutant_name());
-  (void)arb;
-  char line[RELAIS_JOURNAL_LINE_MAX];
-  if (relais_journal_format_header(&h, line, sizeof line) < 0) return false;
-  return fprintf(cfg->journal, "%s\n", line) > 0;
-}
-
-static void write_tick(const config_t *cfg, const relais_arb_out *out, relais_tick tick,
-                       const relais_plant *plant, const relais_meas *meas) {
-  relais_jr_tick r;
-  memset(&r, 0, sizeof r);
-  r.tick = tick;
-  r.mandate = out->mandate;
-  r.holder = out->holder;
-  r.source = out->source;
-  r.value = out->value;
-  r.pos = plant->pos;
-  r.vel = plant->vel;
-  r.setpoint = meas->setpoint;
-  r.misses = out->misses;
-  r.lamp = out->lamp;
-  r.cause = out->cause;
-  r.certified = out->certified;
-  r.certified_node = out->certified_node;
-  r.stop_requested = out->stop_requested;
-  char line[RELAIS_JOURNAL_LINE_MAX];
-  if (relais_journal_format_tick(&r, line, sizeof line) > 0)
-    fprintf(cfg->journal, "%s\n", line);
-}
-
-static void write_events(const config_t *cfg, const relais_arb_out *out, relais_tick tick) {
-  for (uint8_t i = 0; i < out->event_count; i++) {
-    relais_jr_event e;
-    memset(&e, 0, sizeof e);
-    e.tick = tick;
-    e.kind = out->events[i].kind;
-    e.node = out->events[i].node;
-    e.mandate = out->events[i].mandate;
-    e.detail = out->events[i].detail;
-    snprintf(e.text, sizeof e.text, "%s", relais_event_name(e.kind));
-    char line[RELAIS_JOURNAL_LINE_MAX];
-    if (relais_journal_format_event(&e, line, sizeof line) > 0)
-      fprintf(cfg->journal, "%s\n", line);
-  }
-}
-
 static void deadline_add(struct timespec *ts, uint32_t ms) {
   ts->tv_sec += ms / 1000;
   ts->tv_nsec += (long)(ms % 1000) * 1000000L;
@@ -225,8 +174,8 @@ static void run(config_t *cfg, relais_arb *arb, relais_plant *plant) {
     meas.applied = out.value;
     out.statut.meas = meas;
 
-    write_events(cfg, &out, tick);
-    write_tick(cfg, &out, tick, plant, &meas);
+    relais_jw_write_events(cfg->journal, &out, (relais_tick)tick);
+    relais_jw_write_tick(cfg->journal, &out, (relais_tick)tick, plant, meas.setpoint);
     publish_statut(cfg->sock, cfg->peers, &out.statut, &cfg->key);
 
     if (!cfg->realtime) continue;
@@ -310,7 +259,7 @@ int main(int argc, char **argv) {
   load_state(&cfg, &arb);
   relais_plant plant;
   relais_plant_init(&plant, 0.0f, cfg.traj.seed);
-  write_header(&cfg, &arb);
+  relais_jw_write_header(cfg.journal, &cfg.params, relais_mutant_name(), cfg.traj.seed);
 
   run(&cfg, &arb, &plant);
 
