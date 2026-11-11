@@ -25,6 +25,7 @@ real ECU. They are published with their bounds, not as proven worst cases.
 | Level 1: exhaustive exploration, one fault | **100 198 states, depth 12, 0 violation, 0.6 s** | `make explore` |
 | Level 1, **two simultaneous faults** | **10 000 330 states, depth 16, 0 violation, 51 s** | `relais-explore --budget 10000000 --depth 16 --faults 2` |
 | **12 hours** without a wrongful handover (8 640 000 ticks) under 1 % frame loss | **0 violation**, worst gap 1 tick (bound p+1) | `relais-simulate --ticks 8640000 --loss 0.01` |
+| **One billion ticks** simulated, level C, no fault | **0 violation**, worst gap 0, deviation 0, in 30 min | `relais-simulate --ticks 1000000000 --level complet` |
 | The bench sees its own defects | **8 mutants out of 8 flagged** | `host/mutants/run_mutants.py` |
 
 ## 2. Scale of the campaign
@@ -32,6 +33,7 @@ real ECU. They are published with their bounds, not as proven worst cases.
 | Campaign | Runs | Failures |
 |---|---|---|
 | One million ticks, no fault, both levels (I7) | 6 | 0 |
+| **One billion ticks**, no fault, level C (the level-C criterion) | 1 | 0 |
 | **Deaths swept** over 1 986 instants of the period, both roles, level C | 3 972 | 0 |
 | **Freezes**, 1 tick to 1 597 ticks (8 s), both roles, both levels | 10 000 | 0 |
 | **Cuts** of the six half-links, one way and both ways, swept instants, both levels | 5 040 | 0 |
@@ -214,6 +216,7 @@ loops above a verdict rather than a log.
 
 - [x] the level-C requirements are covered by tests
 - [x] **ten million states explored with two faults** — 10 000 330 states, depth 16, 51 s, zero violation
+- [x] **one billion simulated ticks** — 1 000 000 000 ticks, level C, zero violation, 30 min
 - [x] 2 000 swept deaths, 10 000 freezes, 5 000 cuts, zero tick without a fresh order with a certified second — 3 972 / 10 000 / 5 040 runs, zero violation
 - [x] the eight mutants are flagged
 - [x] twelve hours under load without a wrongful handover — 8 640 000 ticks, 1 % frame loss, both levels, zero violation
