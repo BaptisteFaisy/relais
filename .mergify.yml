@@ -1,0 +1,45 @@
+# File de merge Mergify — CI self-hosted (R630), pipeline « comme vision ».
+#
+# Trois checks requis, ceux du ruleset de `main` : `ci` (sanity docs +
+# tests des gardes, `.github/workflows/ci.yml`), `ci-budget` (garde-fou
+# des 5 min, règle user 2026-10-24) et `couche0` (périmètre déclaré +
+# motifs interdits). Le gate hermes-lite reste en dry-run (variable de
+# dépôt HERMES_LITE_DRY_RUN=1) : Mergify est le seul pilote de merge.
+# Structure copiée du .mergify.yml de BaptisteFaisy/duello (décision
+# user 2026-10-10) : inline labels urgent / priority-low identiques.
+queue_rules:
+  - name: default
+    queue_conditions:
+      - check-success = ci
+      - check-success = ci-budget
+      - check-success = couche0
+      - -conflict
+      - -draft
+      - base = main
+    batch_size:
+      min: 1
+      max: 3
+    batch_max_wait_time: "30 seconds"
+    max_checks_retries: 1
+    merge_method: rebase
+    update_method: rebase
+
+priority_rules:
+  - name: urgent
+    conditions:
+      - label = urgent
+    priority: high
+  - name: priority-low
+    conditions:
+      - label = priority-low
+    priority: low
+
+merge_queue:
+  # 5 workers self-hosted (R630, label relais-worker) : la
+  # spéculation Mergify reste bornée à 2 pour ne pas affamer la CI des PR.
+  max_parallel_checks: 2
+
+# Auto-queue natif (produit Merge Queue) : évite de dépendre du produit
+# « Workflow Automation » (pull_request_rules), constaté désactivé le 24/10.
+merge_protections_settings:
+  auto_merge_conditions: true

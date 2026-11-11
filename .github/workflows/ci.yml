@@ -1,0 +1,77 @@
+name: CI
+
+# CI générique pour un dépôt de thèses/docs : contrôles rapides, stdlib
+# uniquement, verdict en quelques secondes. Le check publié s'appelle `ci`
+# (c'est le nom du job qui nomme le check) : il est exigé par le ruleset de
+# `main` et par la file Mergify, comme `ci-budget` et `couche0`.
+on:
+  pull_request:
+  # File de merge : même contrôle sur le commit temporaire du groupe.
+  merge_group:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  ci:
+    name: ci
+    runs-on: [self-hosted, linux, x64, relais-worker]
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+          clean: false
+
+      # Runners self-hosted persistants : un sous-dossier parasite d'un run
+      # précédent peut survivre et fausser le sanity docs (flaky constaté sur
+      # les dépôts frères). Nettoyage complet du workspace — pas de sorties
+      # de build à préserver sur ce dépôt docs ; si un jour il y a des
+      # builds, exclure leurs dossiers ici comme vision (`-e`).
+      - name: Nettoyage du workspace
+        shell: bash
+        run: git clean -ffdx
+
+      - name: Sanity docs (UTF-8, non vides)
+        run: |
+          python3 - <<'EOF'
+          import pathlib
+          racines = [pathlib.Path(".")]
+          exts = {".md", ".mdx", ".txt"}
+          vides, illisibles, total = [], [], 0
+          for racine in racines:
+              for f in sorted(racine.rglob("*")):
+                  if ".git/" in f.as_posix() or f.suffix.lower() not in exts:
+                      continue
+                  total += 1
+                  try:
+                      contenu = f.read_text(encoding="utf-8")
+                  except (OSError, UnicodeError):
+                      illisibles.append(f.as_posix())
+                      continue
+                  if not contenu.strip():
+                      vides.append(f.as_posix())
+          print("%d doc(s) contrôlé(s)" % total)
+          for f in illisibles:
+              print("::error::illisible en UTF-8 : %s" % f)
+          for f in vides:
+              print("::error::document vide : %s" % f)
+          raise SystemExit(1 if (illisibles or vides) else 0)
+          EOF
+
+      # Les gardes de la CI se testent elles-mêmes : couche0 + agents
+      # fireworks — stdlib, quelques secondes, aucun réseau.
+      - name: Tests des gardes CI (couche0, fireworks)
+        run: |
+          python3 .github/couche0/test_check_couche0.py
+          python3 .github/fireworks/test_conflict_agent.py
+          python3 .github/fireworks/test_test_agent.py
+          python3 .github/fireworks/test_scope_agent.py
+          python3 .github/fireworks/test_union_journal.py
+          python3 .github/fireworks/test_quota.py

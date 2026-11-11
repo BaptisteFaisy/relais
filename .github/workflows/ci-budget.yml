@@ -1,0 +1,34 @@
+name: ci-budget (≤ 5 min)
+
+# Règle user 2026-10-24 : toute CI rend son verdict en 5 min au plus.
+# Ce workflow est un garde-fou de configuration, pas un test applicatif :
+# il échoue si un job déclare plus de 5 minutes (ou aucun timeout).
+# Il tourne sur chaque PR pour que le check `ci-budget` existe toujours
+# (condition de file Mergify) — coût : quelques secondes.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-budget-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ci-budget:
+    name: ci-budget
+    runs-on: [self-hosted, relais-worker]
+    timeout-minutes: 5
+    steps:
+      - name: Checkout (superficiel)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Vérifier le budget de 5 min par job
+        run: python3 .github/ci-budget/check_timeouts.py

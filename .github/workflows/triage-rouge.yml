@@ -1,0 +1,180 @@
+name: triage-rouge
+
+# Triage automatique d'un test rouge, puis réparation avec un indice.
+#
+# Vécu le 01/11 (PR #919) : `ci-app` est tombé sur `ProbeStairsPriorityTest`,
+# une classe que la PR ne touchait pas — le coupable était le nouveau test de
+# la PR, qui laissait les globaux de séance sales. Le balayeur a appelé l'agent
+# de réparation deux fois ; sans diagnostic, il a rendu « budget dépassé »
+# (150 s) et la PR est restée bloquée une demi-heure pour une ligne à ajouter.
+#
+# Ici, avant l'agent : `tools/triage_test.py` (lu sur `main`, jamais sur la
+# PR — un juge ne s'écrit pas dans le prétoire) sort la classe tombée, la
+# rapproche du diff, et la relance SEULE. Verte seule = dépendance d'ordre
+# entre tests, pas le code de la PR ; les tests de la PR qui publient des
+# frames sont désignés comme suspects. L'agent reçoit ce verdict en indice.
+#
+# Porte de merge : aucune. Ce workflow ne fait qu'informer et proposer un
+# correctif ; seule la CI verte fait merger. Il reste vert quoi qu'il arrive,
+# pour ne jamais ajouter un check rouge au-dessus d'un rouge.
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+  # Rejouer un triage à la main (après un run rouge précis) : même chemin.
+  workflow_dispatch:
+    inputs:
+      pr:
+        description: "Numéro de PR à trier"
+        required: true
+        type: string
+      run:
+        description: "Identifiant du run CI en échec"
+        required: true
+        type: string
+      reparer:
+        description: "Appeler l'agent de réparation (décocher pour un essai à blanc)"
+        required: false
+        default: true
+        type: boolean
+
+permissions:
+  contents: read
+  actions: read
+  pull-requests: write
+
+concurrency:
+  # Une seule passe par tête : un run annulé ne doit pas trier deux fois.
+  group: triage-rouge-${{ github.event.workflow_run.head_sha || inputs.pr }}
+  cancel-in-progress: true
+
+jobs:
+  triage:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'failure' &&
+       github.event.workflow_run.event == 'pull_request' &&
+       github.event.workflow_run.pull_requests[0].number != null)
+    runs-on: [self-hosted, linux, x64, relais-worker]
+    timeout-minutes: 25 # hors PR : triage + relance isolée + agent fw (~150 s)
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_ECRITURE: ${{ secrets.AUTOMERGE_PAT }}
+      REPO: ${{ github.repository }}
+      PR: ${{ inputs.pr || github.event.workflow_run.pull_requests[0].number }}
+      RUN_ID: ${{ inputs.run || github.event.workflow_run.id }}
+      TEST_AGENT: ${{ vars.TEST_AGENT }}
+      FIREWORKS_API_KEY: ${{ secrets.FIREWORKS_API_KEY }}
+      FIREWORKS_MODEL: ${{ vars.FIREWORKS_MODEL }}
+      FIREWORKS_BASE_URL: ${{ vars.FIREWORKS_BASE_URL }}
+    steps:
+      - name: Contexte (tête, marque déjà posée ?)
+        id: ctx
+        run: |
+          set -uo pipefail
+          export PATH="$HOME/bin:/usr/local/bin:/usr/bin:$PATH" # gh + jq : r630 en espace user
+          # `bash -e` mène ce bloc : chaque lecture qui peut ne rien rendre est
+          # explicitement neutralisée (sinon `grep -c` sans correspondance sort 1
+          # et fait tomber l'étape — vu au premier essai à blanc, 01/11).
+          SHA="$(gh api "repos/$REPO/pulls/$PR" --jq .head.sha || true)"
+          BRANCH="$(gh api "repos/$REPO/pulls/$PR" --jq .head.ref || true)"
+          if [ -z "${SHA:-}" ]; then echo "PR #$PR introuvable, rien à faire"; exit 0; fi
+          DEJA="$(gh api --paginate "repos/$REPO/issues/$PR/comments" \
+            --jq '.[].body' 2>/dev/null | grep -cF "<!-- triage sha=$SHA -->" || true)"
+          DEJA="${DEJA:-0}"
+          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+          echo "branch=$BRANCH" >> "$GITHUB_OUTPUT"
+          printf 'triage de la PR #%s (tête %s), marque déjà posée : %s\n' \
+            "$PR" "${SHA:0:7}" "${DEJA:-0}"
+          if [ "${DEJA:-0}" -gt 0 ]; then echo "pret=0" >> "$GITHUB_OUTPUT"
+          else echo "pret=1" >> "$GITHUB_OUTPUT"; fi
+
+      - name: Tête de la PR dans l'arbre
+        if: steps.ctx.outputs.pret == '1'
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.ctx.outputs.sha }}
+          fetch-depth: 1
+          # Pas de credentials persistés : checkout écrit sinon un
+          # http.extraheader (GITHUB_TOKEN) qui écrase le PAT de l'URL
+          # de push de test_agent.py → push refusé au bot.
+          persist-credentials: false
+
+      # Pas de cache Gradle : dépôt docs sans build (l'étape setup-gradle
+      # exigeait un java absent du runner et faisait échouer le triage).
+
+      # Le journal du run en échec, le diff de la PR, et le triage : le triage
+      # est pris sur `main` (la PR ne juge pas son propre échec).
+      - name: Triage (classe tombée, périmètre, relance isolée)
+        id: tri
+        if: steps.ctx.outputs.pret == '1'
+        run: |
+          set -uo pipefail
+          export PATH="$HOME/bin:/usr/local/bin:/usr/bin:$PATH" # gh + jq : r630 en espace user
+          gh api "repos/$REPO/contents/tools/triage_test.py" \
+            -H 'Accept: application/vnd.github.raw' > /tmp/triage.py \
+            || { echo "triage introuvable sur main, rien à faire"; exit 0; }
+          gh run view "$RUN_ID" --log-failed > /tmp/run.log 2>/dev/null || true
+          gh pr diff "$PR" --name-only > /tmp/diff.txt 2>/dev/null || true
+          wc -l /tmp/run.log /tmp/diff.txt
+          code=0
+          python3 /tmp/triage.py --log /tmp/run.log --diff /tmp/diff.txt \
+            --racine "$GITHUB_WORKSPACE" --verifier --json /tmp/verdict.json \
+            > /tmp/triage.txt 2>&1 || code=$?
+          echo "--- triage (code $code) ---"; cat /tmp/triage.txt
+          echo "code=$code" >> "$GITHUB_OUTPUT"
+
+      - name: Rapport sur la PR (une fois par tête)
+        if: steps.ctx.outputs.pret == '1'
+        run: |
+          set -uo pipefail
+          export PATH="$HOME/bin:/usr/local/bin:/usr/bin:$PATH" # gh + jq : r630 en espace user
+          # Sans `tools/triage_test.py` sur main, l'étape Triage sort avant
+          # d'écrire `/tmp/triage.txt` : un rapport vide plutôt qu'un `sed`
+          # en échec (le job resterait rouge et la réparation ne partirait pas).
+          [ -s /tmp/triage.txt ] || printf '(triage indisponible : `tools/triage_test.py` absent de `main` — verdict : inconnu)\n' > /tmp/triage.txt
+          SHA="${{ steps.ctx.outputs.sha }}"
+          GENRE="$(python3 -c 'import json;print(json.load(open("/tmp/verdict.json"))["genre"])' 2>/dev/null || echo inconnu)"
+          cas() {
+            case "$1" in
+              pollution) echo "pollution-inter-tests" ;;
+              perimetre) echo "test-de-la-pr" ;;
+              *) echo "test-hors-perimetre" ;;
+            esac
+          }
+          LABEL="$(cas "$GENRE")"
+          {
+            echo "<!-- triage sha=$SHA -->"
+            echo "_triage automatique · \`tools/triage_test.py\` (verdict : **$GENRE**)_"
+            echo
+            sed -n '1,40p' /tmp/triage.txt
+            echo
+            echo "La file de merge ne relance pas un test rouge : il faut un correctif. L'agent de réparation est appelé avec ce verdict en indice ; seule la CI verte fera merger."
+          } > /tmp/corps.md
+          GH_TOKEN="$GH_ECRITURE" gh label create "$LABEL" --repo "$REPO" \
+            -c ededed -d "triage automatique d'un test rouge" >/dev/null 2>&1 || true
+          GH_TOKEN="$GH_ECRITURE" gh pr comment "$PR" --repo "$REPO" \
+            --body-file /tmp/corps.md >/dev/null 2>&1 \
+            && echo "rapport posé (label $LABEL)" || echo "rapport refusé"
+          GH_TOKEN="$GH_ECRITURE" gh pr edit "$PR" --repo "$REPO" \
+            --add-label "$LABEL" >/dev/null 2>&1 || true
+
+      # Réparation : même pilote que le balayeur, mais avec l'indice du triage
+      # (c'est ce qui manquait le 01/11 — l'agent cherchait à l'aveugle).
+      - name: Réparation avec indice (agent borné, une fois par tête)
+        if: >-
+          steps.ctx.outputs.pret == '1' && steps.tri.outputs.code != '3' &&
+          (github.event_name != 'workflow_dispatch' || inputs.reparer)
+        run: |
+          set -uo pipefail
+          export PATH="$HOME/bin:/usr/local/bin:/usr/bin:$PATH" # gh + jq : r630 en espace user
+          if [ "${TEST_AGENT:-1}" = "0" ]; then
+            echo "TEST_AGENT=0 : réparation désactivée"; exit 0
+          fi
+          gh api "repos/$REPO/contents/.github/fireworks/test_agent.py" \
+            -H 'Accept: application/vnd.github.raw' > /tmp/agent.py || exit 0
+          python3 /tmp/agent.py fix --repo "$REPO" --pr "$PR" \
+            --branch "${{ steps.ctx.outputs.branch }}" \
+            --sha "${{ steps.ctx.outputs.sha }}" \
+            --indice /tmp/triage.txt || true
