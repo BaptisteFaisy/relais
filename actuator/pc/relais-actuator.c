@@ -148,7 +148,6 @@ static void run(config_t *cfg, relais_arb *arb, relais_plant *plant) {
   struct timespec next;
   clock_gettime(CLOCK_MONOTONIC, &next);
   const uint32_t period = relais_params_period_ms(&cfg->params);
-  float last_value = 0.0f;
   for (uint32_t i = 0; i < cfg->ticks; i++) {
     relais_tick tick = (relais_tick)i + 1;
     deadline_add(&next, period); /* the boundary of this tick */
@@ -159,17 +158,16 @@ static void run(config_t *cfg, relais_arb *arb, relais_plant *plant) {
 
     relais_meas meas;
     memset(&meas, 0, sizeof meas);
-    double seconds = (double)i * relais_params_step_s(&cfg->params);
+    double seconds = (double)i * relais_params_period_s(&cfg->params);
     meas.pos = plant->pos;
     meas.vel = plant->vel;
-    meas.applied = last_value;
+    meas.applied = plant->vel;
     meas.setpoint = relais_traj_setpoint(&cfg->traj, seconds);
 
     relais_arb_out out;
     relais_arb_step(arb, tick, msgs, n, &meas, &out);
     relais_plant_step(plant, out.value, relais_traj_disturbance(&cfg->traj, seconds),
-                      (float)relais_params_step_s(&cfg->params));
-    last_value = out.value;
+                      (float)relais_params_period_s(&cfg->params));
 
     meas.pos = plant->pos;
     meas.vel = plant->vel;

@@ -7,6 +7,3 @@ build-*/
 runs/
 *.o
 *.a
-
-# captures et rapports de campagne locaux ; les preuves versionnées sont dans docs/figures/
-*.ppm

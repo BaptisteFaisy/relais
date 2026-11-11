@@ -10,7 +10,7 @@
 #include <string.h>
 
 static float setpoint_at(const sim_t *s, uint32_t tick) {
-  double seconds = (double)(tick > 0 ? tick - 1 : 0) * relais_params_step_s(&s->params);
+  double seconds = (double)(tick > 0 ? tick - 1 : 0) * relais_params_period_s(&s->params);
   return relais_traj_setpoint(&s->traj, seconds);
 }
 
@@ -133,7 +133,7 @@ void sim_run_tick(sim_t *s, uint32_t tick, relais_arb_out *out) {
   meas.vel = s->plant.vel;
   meas.setpoint = setpoint_at(s, tick);
   relais_arb_step(&s->arb, (relais_tick)tick, msgs, n, &meas, out);
-  float dt = (float)relais_params_step_s(&s->params);
+  float dt = (float)relais_params_period_s(&s->params);
   relais_plant_step(&s->plant, out->value,
                     relais_traj_disturbance(&s->traj, (double)tick * (double)dt), dt);
   out->statut.meas.pos = s->plant.pos;
