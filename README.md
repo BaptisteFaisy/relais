@@ -177,7 +177,7 @@ hypotheses (spec §14):
 | Level 3 — real faults under QEMU | bench written (`host/bench/`), **not yet run**: it needs a QNX image built with `mkqnximage`, and the six feasibility probes E1–E6 of spec §10 are the first thing to run on it |
 | The QNX processes and the image (`target/`, `image/`) | **in progress**; `make -C target syntax` is the check that runs in CI until the SDP is available |
 | Mutants (spec §7.6) | **done**, 8 of 8 flagged (`python3 host/mutants/run_mutants.py`) |
-| HTML campaign report (OBS-05) | **in progress**: `host/report/` |
+| HTML campaign report (OBS-05) | **done** — standalone file, inline SVG, no script, no external resource: `python3 host/report/report.py --campaign runs/ --level complet` |
 | Video under three minutes | **to be recorded** |
 
 What is measured is in `docs/RESULTS.md`; what is still a hypothesis is listed in
