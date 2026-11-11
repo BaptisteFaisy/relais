@@ -163,6 +163,26 @@ make mutants    # build the eight deliberately defective variants
 | HAM supervision | Processes are launched and restarted by the QNX High Availability Manager (QNX-06) |
 | Kernel tracing | `trace_logf()` user events mark `STATUT` received, order emitted, role change, cession — the trace shows the whole critical path with effective priorities, network stack included (OBS-03, QNX-04) |
 
+## Status of this tree
+
+Stated plainly, because the specification asks for claims to be separated from
+hypotheses (spec §14):
+
+| Piece | State |
+|---|---|
+| `core/` — pure C11 protocol core (frames, arbiter, node, control law, rack, will, journal, invariants) | **done**, builds with `-Werror`, no warning |
+| Level 0 — unit and protocol tests | **done**, 5630 checks green (`make test`) |
+| Level 1 — exhaustive exploration of the core | **in progress**: `host/explore/`; `make explore` says so instead of pretending |
+| Level 2 — seeded simulation and campaign | **done**: 1053 fault runs, zero violation (`make campaign`, `docs/RESULTS.md`) |
+| Level 3 — real faults under QEMU | bench written (`host/bench/`), **not yet run**: it needs a QNX image built with `mkqnximage`, and the six feasibility probes E1–E6 of spec §10 are the first thing to run on it |
+| The QNX processes and the image (`target/`, `image/`) | **in progress**; `make -C target syntax` is the check that runs in CI until the SDP is available |
+| Mutants (spec §7.6) | **done**, 8 of 8 flagged (`python3 host/mutants/run_mutants.py`) |
+| HTML campaign report (OBS-05) | **in progress**: `host/report/` |
+| Video under three minutes | **to be recorded** |
+
+What is measured is in `docs/RESULTS.md`; what is still a hypothesis is listed in
+`docs/SPEC.md` §14 and `host/bench/QEMU.md`.
+
 ## Repository layout
 
 ```

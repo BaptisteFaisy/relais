@@ -137,6 +137,23 @@ def apply_fault(fault, nodes, verbose, period_s=0.005):
         print("  fault %-22s at tick %s" % (label, fault.get("at_tick")))
 
 
+def run_qemu(scenario, out_dir, level):
+    """Two QNX guests under QEMU, driven over QMP (spec 4.11, INJ-02..04).
+
+    Needs a QNX 8.0 image built with mkqnximage; without one, the orchestrator
+    says so with the exact command to build it instead of failing obscurely.
+    """
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    try:
+        import orchestrator
+    except ImportError as exc:
+        sys.exit("QEMU mode is unavailable: %s" % exc)
+    runner = getattr(orchestrator, "Orchestrator", None)
+    if runner is None:
+        sys.exit("QEMU mode: host/bench/orchestrator.py exposes no Orchestrator")
+    return runner(root=ROOT, out_dir=out_dir).run(scenario, level=level)
+
+
 def run_simulated(scenario, out_dir, level):
     """Deterministic run: the seeded simulator, no clock, no jitter (spec 7.4).
 
@@ -257,9 +274,12 @@ def main():
     ap.add_argument("--out", default="", help="run directory")
     ap.add_argument("--level", default="complet", choices=["socle", "complet"])
     ap.add_argument("--verify", help="verify an existing journal and exit")
+    ap.add_argument("--mode", default="pc", choices=["pc", "sim", "qemu"],
+                    help="pc: three real processes on this host (default); "
+                         "sim: the seeded simulator, deterministic, no clock; "
+                         "qemu: two QNX 8.0 guests driven over QMP")
     ap.add_argument("--sim", action="store_true",
-                    help="deterministic mode: the seeded simulator instead of real "
-                         "processes (no clock, no jitter, always reproducible)")
+                    help="shortcut for --mode sim")
     args = ap.parse_args()
 
     if args.verify:
@@ -276,9 +296,14 @@ def main():
         shutil.rmtree(out_dir)
     print("== Relais: %s (%d ticks, %d ms per tick, mode %s) ==" % (
         scenario.get("name", "run"), scenario.get("ticks", 0),
-        scenario.get("params", {}).get("T", 5), "sim" if args.sim else "pc"))
-    journal, faults = (run_simulated(scenario, out_dir, args.level) if args.sim
-                       else run_scenario(scenario, out_dir))
+        scenario.get("params", {}).get("T", 5), "sim" if args.sim else args.mode))
+    mode = "sim" if args.sim else args.mode
+    if mode == "qemu":
+        journal, faults = run_qemu(scenario, out_dir, args.level)
+    elif mode == "sim":
+        journal, faults = run_simulated(scenario, out_dir, args.level)
+    else:
+        journal, faults = run_scenario(scenario, out_dir)
     print("  run directory: %s (%d fault(s) injected)" % (out_dir, faults))
     nested = nested_faults(scenario)
     if nested:
