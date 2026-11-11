@@ -40,13 +40,14 @@ $(BUILD)/core/%.o: core/src/%.c
 	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS) $(CPPFLAGS) -c $< -o $@
 
-# The protocol test drives the simulator world: it links the same pipeline
-# instead of re-writing one (no duplication between test and bench).
-$(BUILD)/test_protocol: core/tests/test_protocol.c core/tests/test_util.c \
-    host/simulate/sim.c host/simulate/sim_faults.c $(LIB)
+# The protocol-level tests drive the simulator world: they link the same
+# pipeline instead of re-writing one (no duplication between test and bench).
+SIM_SRC := host/simulate/sim.c host/simulate/sim_faults.c
+$(BUILD)/test_protocol $(BUILD)/test_law: $(BUILD)/test_%: \
+    core/tests/test_%.c core/tests/test_util.c $(SIM_SRC) $(LIB)
 	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS) $(CPPFLAGS) -Ihost/simulate $< core/tests/test_util.c \
-	  host/simulate/sim.c host/simulate/sim_faults.c $(LIB) $(LDLIBS) -o $@
+	  $(SIM_SRC) $(LIB) $(LDLIBS) -o $@
 
 $(BUILD)/test_%: core/tests/test_%.c core/tests/test_util.c $(TEST_FIXTURES) $(LIB)
 	@mkdir -p $(dir $@)
