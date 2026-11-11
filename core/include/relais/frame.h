@@ -17,6 +17,8 @@
 #define RELAIS_FLAG_CESSION   0x02u
 #define RELAIS_FLAG_TEST      0x04u /* bench frame, never applied */
 #define RELAIS_FLAG_HAS_ORDER 0x08u /* a DEMANDE carries its first order */
+#define RELAIS_FLAG_DISSIMILAR 0x10u /* STATUT: the certified second is a
+                                        dissimilar backup (DEG-08) */
 
 typedef struct {
   relais_msg_type type;

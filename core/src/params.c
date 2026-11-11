@@ -20,6 +20,8 @@ void relais_params_default(relais_params *p) {
   p->request_window = 4;
   p->epsilon = 0.005f;  /* 0.5 % of full scale */
   p->delta = 0.02f;     /* 2 % of full scale */
+  p->dissimilar_epsilon = 0.0f; /* DEG-08: off = identical backup, unchanged */
+  p->dissimilar_delta = 0.02f;  /* = delta while off, so the rule always holds */
   p->degraded_ticks = 6000; /* 30 s at 5 ms */
   p->max_amplitude = RELAIS_FULL_SCALE;
   p->max_slew = 0.25f;
@@ -50,6 +52,19 @@ bool relais_params_valid(const relais_params *p, char *why, size_t why_len) {
   if (!(p->epsilon > 0.0f) || !(p->delta > 0.0f))
     return bad(p, "epsilon ou delta nul", why, why_len);
   if (p->delta > 0.5f) return bad(p, "delta > 50 % de pleine echelle", why, why_len);
+  /* DEG-08: a dissimilar backup widens the order/shadow band by
+   * dissimilar_epsilon (disabled at 0, so the behaviour is unchanged) and, at
+   * the handover, admits a continuity bump of dissimilar_delta. A bound is only
+   * ever relaxed when the new number is published: the STATUT carries the new
+   * flag, and dissimilar_delta is explicit in the parameter block. */
+  if (!(p->dissimilar_epsilon >= 0.0f) || p->dissimilar_epsilon >= 1.0f)
+    return bad(p, "dissimilar_epsilon hors de [0,1[", why, why_len);
+  if (p->dissimilar_epsilon > 0.0f) {
+    if (!(p->dissimilar_delta >= p->delta))
+      return bad(p, "dissimilar_delta < delta", why, why_len);
+    if (p->dissimilar_delta > 0.5f)
+      return bad(p, "dissimilar_delta > 50 % de pleine echelle", why, why_len);
+  }
   if (p->degraded_ticks < 1) return bad(p, "duree degradee nulle", why, why_len);
   if (!(p->max_amplitude > 0.0f) || p->max_amplitude > 10.0f)
     return bad(p, "amplitude hors borne", why, why_len);
@@ -87,6 +102,8 @@ static bool apply_kv(relais_params *p, const char *k, const char *v) {
   if (strcmp(k, "bail") == 0) { p->bail_ticks = (uint8_t)u; return true; }
   if (strcmp(k, "eps") == 0) { p->epsilon = (float)d; return true; }
   if (strcmp(k, "delta") == 0) { p->delta = (float)d; return true; }
+  if (strcmp(k, "deps") == 0) { p->dissimilar_epsilon = (float)d; return true; }
+  if (strcmp(k, "ddelta") == 0) { p->dissimilar_delta = (float)d; return true; }
   if (strcmp(k, "degraded") == 0) { p->degraded_ticks = (uint32_t)u; return true; }
   if (strcmp(k, "amp") == 0) { p->max_amplitude = (float)d; return true; }
   if (strcmp(k, "slew") == 0) { p->max_slew = (float)d; return true; }

@@ -32,6 +32,8 @@ typedef struct {
   bool switch_pending;   /* a certified second became holder during this tick */
   bool certified;
   relais_node certified_node;
+  bool certified_dissimilar; /* DEG-08: the certified second is a dissimilar backup */
+  bool widen_seen;           /* the pending certification streak used the widened band */
   uint8_t certify_streak;
   uint8_t shadow_misses;
   float last_order;
