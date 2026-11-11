@@ -1,0 +1,79 @@
+name: pages
+
+# Le site public du dépôt : github.com/BaptisteFaisy/relais -> Pages.
+# Assemblé à chaque merge sur main : la page, les captures de la machine
+# virtuelle, et un rapport de campagne REGENERE au moment du déploiement —
+# la preuve publiée est produite par la CI, pas recopiée à la main.
+# Budget : 5 min par job (règle user), garde ci-budget.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: build
+    runs-on: [self-hosted, linux, x64, relais-worker]
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Assembler le site
+        run: |
+          rm -rf _site && mkdir -p _site/figures
+          cp -r site/. _site/
+          if [ -d docs/figures/vm-freeze ]; then
+            cp docs/figures/vm-freeze/*.png docs/figures/vm-freeze/*.svg _site/figures/
+            cp docs/figures/vm-freeze/actuator.jsonl _site/figures/ || true
+          else
+            echo "pas encore de captures de VM dans cet arbre"
+          fi
+
+      - name: Rapport de campagne régénéré
+        run: |
+          make -j"$(nproc)" build/relais-simulate
+          for cas in "nominal:" "death:500:death:0" "freeze:700:freeze:0:40"; do
+            nom="${cas%%:*}"; faute="${cas#*:}"
+            mkdir -p "runs/site/$nom"
+            if [ -n "$faute" ]; then
+              ./build/relais-simulate --ticks 2000 --seed 7 --level complet \
+                --fault "$faute" --scenario "$nom" --journal "runs/site/$nom/actuator.jsonl" \
+                --twin-journal "runs/site/$nom/twin.jsonl" --quiet
+            else
+              ./build/relais-simulate --ticks 2000 --seed 7 --level complet \
+                --scenario "$nom" --journal "runs/site/$nom/actuator.jsonl" \
+                --twin-journal "runs/site/$nom/twin.jsonl" --quiet
+            fi
+          done
+          python3 host/report/report.py --campaign runs/site --out _site/report.html \
+            --level complet --title "Relais — campaign report, regenerated at deploy"
+          ls -l _site _site/figures | head -20
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+  deploy:
+    name: deploy
+    needs: build
+    runs-on: [self-hosted, linux, x64, relais-worker]
+    timeout-minutes: 5
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
