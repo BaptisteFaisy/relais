@@ -4,6 +4,7 @@
 Lance : python3 -m unittest test_conflict_agent -v
 (depuis .github/inferhub/).
 """
+import json
 import os
 import shutil
 import subprocess
@@ -14,6 +15,7 @@ from unittest import mock
 
 import compilation_gate
 import conflict_agent
+import quota
 
 
 class EnvOrTest(unittest.TestCase):
@@ -474,3 +476,99 @@ class PlafondFichiersTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class NormalisationUrlTest(unittest.TestCase):
+    """La variable s'appelle BASE_URL, le code attend l'endpoint : les deux
+    doivent marcher, sinon c'est un 404 silencieux sur un vrai conflit."""
+
+    CIBLE = "https://api.inferhub.dev/v1/chat/completions"
+
+    def test_endpoint_complet_inchange(self):
+        self.assertEqual(conflict_agent.normalize_api_url(self.CIBLE), self.CIBLE)
+
+    def test_base_avec_v1_completee(self):
+        self.assertEqual(
+            conflict_agent.normalize_api_url("https://api.inferhub.dev/v1"),
+            self.CIBLE)
+
+    def test_base_nue_completee(self):
+        self.assertEqual(
+            conflict_agent.normalize_api_url("https://api.inferhub.dev"),
+            "https://api.inferhub.dev/chat/completions")
+
+    def test_slash_final_et_vide(self):
+        self.assertEqual(
+            conflict_agent.normalize_api_url("https://api.inferhub.dev/v1/"),
+            self.CIBLE)
+        self.assertEqual(conflict_agent.normalize_api_url(""),
+                         conflict_agent.API_DEFAULT)
+        self.assertEqual(conflict_agent.normalize_api_url(None),
+                         conflict_agent.API_DEFAULT)
+
+
+class CooldownRenduTest(unittest.TestCase):
+    """Une erreur de transport n'a consommé aucun jeton : elle ne doit pas
+    immobiliser la PR pendant tout le cooldown."""
+
+    def test_release_stamp_rend_le_cooldown(self):
+        racine = tempfile.mkdtemp()
+        try:
+            with mock.patch.object(quota, "cache_dir", return_value=racine):
+                quota.autoriser(42, "abc123")
+                with self.assertRaises(quota.Saisine):
+                    quota.autoriser(42, "abc123")   # cooldown actif
+                quota.release_stamp(42, "abc123")
+                quota.autoriser(42, "abc123")       # ne lève plus rien
+        finally:
+            shutil.rmtree(racine, ignore_errors=True)
+
+    def test_release_stamp_inexistant_ne_casse_pas(self):
+        racine = tempfile.mkdtemp()
+        try:
+            with mock.patch.object(quota, "cache_dir", return_value=racine):
+                quota.release_stamp(7, "jamais-vu")   # aucun fichier : silencieux
+        finally:
+            shutil.rmtree(racine, ignore_errors=True)
+
+
+class ReponseSansContenuTest(unittest.TestCase):
+    """Un modèle de raisonnement peut rendre content null ou vide : l'agent doit
+    échouer proprement, jamais pousser un fichier vide ni lever un TypeError."""
+
+    def _reponse(self, payload):
+        class FakeResp:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *exc):
+                return False
+
+            def read(self):
+                return payload
+
+        return FakeResp()
+
+    def _appelle(self, message):
+        payload = json.dumps({"choices": [{"message": message}]}).encode("utf-8")
+        with mock.patch("urllib.request.urlopen", return_value=self._reponse(payload)):
+            return conflict_agent.ih_complete("http://x", "cle", "modele",
+                                              [{"role": "user", "content": "x"}])
+
+    def test_content_null_leve_agenterror(self):
+        with self.assertRaises(conflict_agent.AgentError) as ctx:
+            self._appelle({"content": None, "reasoning_content": "je réfléchis"})
+        self.assertIn("sans contenu", str(ctx.exception))
+
+    def test_content_vide_leve_agenterror(self):
+        with self.assertRaises(conflict_agent.AgentError):
+            self._appelle({"content": "   \n ", "reasoning_content": "..."})
+
+    def test_content_normal_passe(self):
+        self.assertEqual(self._appelle({"content": "résolu"}), "résolu")
+
+    def test_choices_manquant_leve_agenterror(self):
+        payload = json.dumps({"error": "boom"}).encode("utf-8")
+        with mock.patch("urllib.request.urlopen", return_value=self._reponse(payload)):
+            with self.assertRaises(conflict_agent.AgentError):
+                conflict_agent.ih_complete("http://x", "c", "m", [])

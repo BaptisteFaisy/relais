@@ -86,6 +86,22 @@ def touch_stamp(pr, sha):
         fh.write(str(int(time.time())))
 
 
+def release_stamp(pr, sha):
+    """Rend le cooldown quand le modèle n'a jamais été atteint.
+
+    `autoriser` estampille AVANT l'appel, ce qui est le bon choix pour borner le
+    coût : un modèle qui répond mal ne doit pas être ré-interrogé en boucle. Mais
+    une erreur de transport (mauvaise URL, 404, fournisseur injoignable) n'a
+    consommé aucun jeton : sans cette libération, une variable mal renseignée
+    immobilise la PR pendant tout le cooldown, et le conflit attend un humain
+    pour une raison purement administrative.
+    """
+    try:
+        os.remove(stamp_path(pr, sha))
+    except OSError:
+        pass
+
+
 def autoriser(pr, sha):
     """Lève Saisine si le modèle ne doit pas être appelé maintenant.
 

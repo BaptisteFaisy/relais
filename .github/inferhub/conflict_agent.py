@@ -188,6 +188,20 @@ def build_hunk_messages(path, hunk):
             {"role": "user", "content": "\n".join(parts)}]
 
 
+def normalize_api_url(value):
+    """Accepte l'URL complète OU la base, et rend l'URL complète.
+
+    La variable s'appelle BASE_URL et le code attend l'URL de l'endpoint : le
+    piège a coûté un 404 en production. Plutôt que de choisir un camp, on
+    complète ce qui manque — une base nue, une base avec /v1, ou l'endpoint
+    déjà complet donnent la même URL.
+    """
+    url = (value or API_DEFAULT).strip().rstrip("/")
+    if url.endswith("/chat/completions"):
+        return url
+    return url + "/chat/completions"
+
+
 def ih_complete(api_url, key, model, messages):
     """Un appel chat/completions InferHub, rend le texte réponse."""
     payload = json.dumps({"model": model, "messages": messages,
@@ -202,9 +216,16 @@ def ih_complete(api_url, key, model, messages):
     except Exception as exc:                                   # noqa: BLE001
         raise AgentError("appel InferHub : %s" % str(exc)[:200])
     try:
-        return data["choices"][0]["message"]["content"]
+        content = data["choices"][0]["message"]["content"]
     except (KeyError, IndexError, TypeError):
         raise AgentError("réponse InferHub illisible (pas de choices[0])")
+    # Les modèles de raisonnement (combo/cheap rute vers un modèle qui pense
+    # avant de répondre) peuvent rendre content=null ou vide quand le budget de
+    # jetons part dans reasoning_content. Mieux vaut un échec net, commenté sur
+    # la PR, qu'un TypeError plus bas ou un fichier résolu vide poussé de force.
+    if not isinstance(content, str) or not content.strip():
+        raise AgentError("réponse InferHub sans contenu (raisonnement seul ?)")
+    return content
 
 
 def extract_file(text):
@@ -321,7 +342,7 @@ def preflight(repo, pr, sha, dry_run, now):
         raise Skip("aucun fichier en conflit")
     check_round_files(files)
     model = env_or("INFERHUB_MODEL", MODEL_DEFAULT)
-    api_url = env_or("INFERHUB_BASE_URL", API_DEFAULT)
+    api_url = normalize_api_url(env_or("INFERHUB_BASE_URL", API_DEFAULT))
     return key, model, api_url, files
 
 
@@ -458,7 +479,13 @@ def cmd_resolve(args):
         log(str(exc))
         return 2
     except AgentError as exc:
-        return fail(repo, pr, str(exc))
+        reason = str(exc)
+        if reason.startswith("appel InferHub") or "sans contenu" in reason:
+            # Le modèle n'a rien produit : aucun jeton consommé, on rend le
+            # cooldown pour qu'un prochain passage puisse réessayer.
+            if quota:
+                quota.release_stamp(pr, sha)
+        return fail(repo, pr, reason)
     deadline = now + BUDGET_S
     if args.dry_run:
         try:
