@@ -57,6 +57,10 @@ typedef struct {
 } relais_msg;
 
 void relais_msg_clear(relais_msg *m);
+/* Where a frame goes: ETAT and SUIVI travel between the two computers, every
+ * other type goes to the actuator. One rule, used by the PC node and by the
+ * QNX relais-net alike (spec 4.9). */
+bool relais_msg_to_peer(relais_msg_type type);
 
 /* Exact on-wire size of a message, payload included. */
 size_t relais_frame_encoded_size(const relais_msg *m);

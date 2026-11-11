@@ -1,0 +1,33 @@
+# Relais — mkqnximage buildfile fragment.
+# Binaries embedded in the image. Paths are relative to the repository root, so
+# build from there: mkqnximage -B image/fragments/buildfile ...
+#
+# The four target processes are built by `make -C target` (qcc -V
+# gcc_ntox86_64). The actuator runs in a third guest at level C (ACT-08); at
+# level S it runs on the PC and only the two computers are guests.
+
+[+script] ./usr/bin/relais-net = target/build/relais-net
+[+script] ./usr/bin/relais-core = target/build/relais-core
+[+script] ./usr/bin/relais-ctl = target/build/relais-ctl
+[+script] ./usr/bin/relaisctl = target/build/relaisctl
+[+script] ./usr/bin/relais-actuator = target/build/relais-actuator
+
+# Network stack and its driver. Which driver matches the emulated card is
+# feasibility probe E1: try devs-vtnet_pci.so with -device virtio-net-pci, and
+# fall back to devs-em.so with -device e1000 or -netdev user.
+[+script] ./usr/lib/exec/io-sock = $(QNX_TARGET)/x86_64le/usr/libexec/io-sock
+[+script] ./usr/lib/drv/devs-vtnet_pci.so = $(QNX_TARGET)/x86_64le/usr/lib/drv/devs-vtnet_pci.so
+[+script] ./usr/lib/drv/devs-em.so = $(QNX_TARGET)/x86_64le/usr/lib/drv/devs-em.so
+
+# What the bench and the operator need inside the guest.
+[+script] ./usr/bin/pidin = $(QNX_TARGET)/x86_64le/usr/bin/pidin
+[+script] ./usr/bin/slog2info = $(QNX_TARGET)/x86_64le/usr/bin/slog2info
+[+script] ./usr/bin/tracer = $(QNX_TARGET)/x86_64le/usr/bin/tracer
+[+script] ./usr/bin/dumper = $(QNX_TARGET)/x86_64le/usr/bin/dumper
+[+script] ./usr/bin/if_up = $(QNX_TARGET)/x86_64le/usr/sbin/if_up
+[+script] ./usr/bin/ifconfig = $(QNX_TARGET)/x86_64le/usr/sbin/ifconfig
+
+# Boot and supervision scripts, plus the identity of this machine.
+[+script] ./usr/bin/identity.sh = image/fragments/identity.sh
+[+script] ./usr/bin/ham.script = image/fragments/ham.script
+[+script] ./etc/security/policy/relais.xml = image/fragments/security_policy.xml
