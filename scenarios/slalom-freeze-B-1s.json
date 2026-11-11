@@ -1,0 +1,25 @@
+{
+  "params": {
+    "T": 5,
+    "p": 1,
+    "N": 8
+  },
+  "ticks": 4000,
+  "trajectory": {
+    "kind": "slalom",
+    "amp": 0.6,
+    "freq": 0.5
+  },
+  "id": 5,
+  "name": "slalom-freeze-B-1s",
+  "seed": 1005,
+  "faults": [
+    {
+      "at_tick": 900,
+      "type": "freeze",
+      "target": "B",
+      "ticks": 200
+    }
+  ],
+  "note": "the second freezes for one second: the holder keeps commanding"
+}

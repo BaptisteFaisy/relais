@@ -1,0 +1,24 @@
+{
+  "params": {
+    "T": 5,
+    "p": 1,
+    "N": 8
+  },
+  "ticks": 4000,
+  "trajectory": {
+    "kind": "slalom",
+    "amp": 0.6,
+    "freq": 0.5
+  },
+  "id": 10,
+  "name": "sweep-death-all-phases",
+  "seed": 1010,
+  "faults": [
+    {
+      "at_tick": 400,
+      "type": "death",
+      "target": "A"
+    }
+  ],
+  "note": "campaign template: the instant of the fault is swept over the period"
+}

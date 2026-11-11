@@ -1,0 +1,18 @@
+{
+  "params": {
+    "T": 5,
+    "p": 1,
+    "N": 8
+  },
+  "ticks": 4000,
+  "trajectory": {
+    "kind": "slalom",
+    "amp": 0.6,
+    "freq": 0.5
+  },
+  "id": 1,
+  "name": "slalom-nominal",
+  "seed": 1001,
+  "faults": [],
+  "note": "the twin without fault: the reference of every other run"
+}

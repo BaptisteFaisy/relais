@@ -1,14 +1,259 @@
-# relais
+# Relais
 
-Relais — bounded-latency failover between two QNX 8.0 computers steering the same actuator. The actuator is the arbiter and the clock: it hands out mandate numbers, ticks every period, and never applies the order of a deposed machine. QNX Global Hackathon 2026, Automotive & Mobility.
+**Bounded-latency failover between two QNX 8.0 computers steering the same
+simulated steer-by-wire actuator — the actuator is the arbiter and the clock,
+and it never applies the order of a deposed machine.**
 
-## Pipeline
+QNX Global Hackathon 2026 — Automotive & Mobility category.
 
-File de merge Mergify (rebase, historique linéaire) + balayeur `pr-auto-merge` :
-checks requis `ci`, `ci-budget` (jobs ≤ 5 min), `couche0` (garde `## Scope`).
+---
 
-- Runners self-hosted r630 : `r630-relais-01..NN` (label `__WORKER__`).
-- Toute PR porte une section `## Scope` (puces `- `fichier``) listant ses
-  fichiers ; les workflows sont des fichiers de garde (`SAMVISION_ALLOW_GUARD_BUMP`).
-- Conflits : agent Fireworks ; tests rouges : agent zeroclaw `fw` via `triage-rouge`.
-- `main` est protégée (ruleset) : tout passe par PR + file, jamais de push direct.
+## Why
+
+As long as a steering column connects the wheel to the racks, a failing assist
+computer may simply go silent: the driver pushes harder. That is *fail-safe*.
+Two evolutions break the reasoning:
+
+- **Steer-by-wire.** Without a mechanical column, a silent computer leaves the
+  wheels without command.
+- **Automated driving.** When nobody holds the wheel, nobody can take over
+  within the second.
+
+In both cases, **going silent is no longer a safe state**. The function must
+keep running, at least long enough to reach a safe stop — the system must be
+*fail-operational*. The usual answer is to duplicate the computer, and the whole
+difficulty moves to one question: **who commands, and how do you change hands
+without a mistake and without a gap?**
+
+Regulation asks for exactly this answer. **UN Regulation No. 79, Annex 6,
+§3.4.3.2** requires the manufacturer, when a failure provision is
+"transfer to a separate back-up system", to explain the principles of the
+transfer mechanism, its logic, its level of redundancy, its built-in controls,
+and to define the limits of the back-up's effectiveness. Relais is, at small
+scale, such an answer: a transfer mechanism whose principle, logic, controls
+and limits are written down — then checked by fault injection (see
+[docs/SAFETY.md](docs/SAFETY.md)).
+
+## Four ideas
+
+1. **The actuator is the arbiter.** It hands out mandate numbers, and it
+   revokes a mandate only on its own evidence: the holder stopped sending
+   orders. Two machines that no longer agree therefore cannot both command. The
+   "dead machine or cut cable?" dilemma is settled without a third computer.
+2. **The actuator gives the tempo.** It emits a status frame every period (the
+   *tick*), and every order is valid only for the tick it names. No clocks to
+   synchronise between machines, and an order computed before a freeze is stale
+   by construction.
+3. **The will (testament).** Every order embeds the values planned for the next
+   N ticks. During the handover, the actuator plays the plan of the missing
+   holder: the physical curve shows no hole.
+4. **Proof by exploration — and proof of the proof.** The protocol core is a
+   pure state machine, no clock, no network. It is explored exhaustively on the
+   PC; then machines are really killed, frozen and unplugged under QEMU at
+   every instant of the cycle; and deliberately defective builds (*mutants*)
+   verify that the bench actually sees faults.
+
+## Architecture
+
+```
+                Linux PC, no administrator rights
+
+   ┌──────────────┐     inter-computer link      ┌──────────────┐
+   │   QEMU  A    │                              │   QEMU  B    │
+   │   QNX 8.0    │◄───────►┌───────────┐◄──────►│   QNX 8.0    │
+   │   holder     │         │ programmed│        │   second     │
+   └──────┬───────┘         │   cable   │        └───────┬──────┘
+          │ link A          └───────────┘                │ link B
+          ▼                                              ▼
+   ┌─────────────────────────────────────────────────────────────┐
+   │  simulated actuator: arbiter + rack model + tempo (tick)    │
+   └──────────────────────────────┬──────────────────────────────┘
+                                  │ journal, one record per tick
+   ┌──────────────┐               ▼
+   │ orchestrator │──► QEMU: death, freeze, thaw, cable unplugged
+   └──────────────┘──► invariant checker ──► campaign report
+```
+
+Both computers boot the **same image** and tell themselves apart by their NIC
+MAC address. The *programmed cable* is a small relay on the PC that passes,
+drops, delays, duplicates or reorders frames — per message type and per
+direction. The *orchestrator* launches the machines, runs a fault plan, drives
+QEMU (`quit`, `stop`/`cont`, `set_link`, `system_reset`), and collects journals
+and captures.
+
+## Measured guarantees
+
+Default parameters: period T = 5 ms (200 Hz), patience p = 1, will horizon
+N = 8 ticks. Values below are **measured worst cases under emulation**, never
+proven worst cases.
+
+| Property | Base level (S) | Full level (C) |
+|---|---|---|
+| Gap between two fresh orders after the holder dies | ≤ 3 periods = **15 ms** at 200 Hz, bridged by the will | **Zero**: no tick ever served without a fresh order (the certified second's shadow substitutes from the first miss) |
+| Double command (two machines applied at once) | Impossible **by construction** — only the actuator writes the mandate and it applies orders only from the holder it named, for the tick to come | Same, plus order-vs-shadow comparison flags a miscomputing machine |
+| The revenant (machine frozen then thawed) | Its stale orders are dropped twice over: wrong holder, wrong tick | Same; it re-joins as a second without disturbing command |
+| Both machines dead | Will plays out, then fallback law ≤ N+1 ticks after the last fresh order | Same |
+
+Full requirement list: [docs/SPEC-2.md](docs/SPEC-2.md). Invariants I1–I11:
+[docs/SPEC-2.md §7.2](docs/SPEC-2.md). Fault-by-fault behaviour:
+[docs/TRUTH-TABLE.md](docs/TRUTH-TABLE.md).
+
+## Run the demo in one command
+
+```sh
+make demo        # launches the whole bench and replays a handover scenario
+```
+
+or drive the bench directly:
+
+```sh
+# PC mode: the real protocol core, simulated machines, no QNX needed
+python3 host/bench/relais_bench.py --scenario scenarios/slalom-death-A.json --mode pc
+
+# QEMU mode: two real QNX 8.0 guests, real kills / freezes / cable cuts
+python3 host/bench/relais_bench.py --scenario scenarios/slalom-death-A.json --mode qemu
+```
+
+- `--mode pc` runs the pure C core (the same files that run on QNX) inside a
+  discrete-event simulator with a seeded timing model, plus the fault-free
+  *twin* for continuity comparison. No QNX licence needed.
+- `--mode qemu` boots the two QNX guests and the actuator, injects the faults
+  of the scenario through QEMU, captures every link, and verifies the actuator
+  journal against the invariants.
+
+Each run prints the mandate history, the largest fresh-order gap, and the
+invariant verdict; the journal can be re-checked offline with
+`build/relais-verify`. (The bench orchestrator is being finalised; the core,
+explorer, simulator and verifier build today — see `make` targets below.)
+
+## Build requirements
+
+**PC side (core library, tests, explorer, simulator, actuator, verifier):**
+
+- gcc or clang, C11 (`-std=c11 -Wall -Wextra -Werror`), GNU make
+- Python 3, standard library only
+
+```sh
+make            # build everything into build/
+make test       # unit tests
+make explore    # exhaustive exploration of the core
+make simulate   # seeded long-run simulation
+make mutants    # build the eight deliberately defective variants
+```
+
+**QNX side (target computers):**
+
+- **QNX SDP 8.0**, free for non-commercial use through the *QNX Everywhere*
+  program
+- Image built with **`mkqnximage`**, target **QEMU x86_64**
+- Compiler: **`qcc -V gcc_ntox86_64`**
+- **QEMU ≥ 8.2**, with **KVM** for timing measurements
+- **No administrator rights** on the host: user networking, `-netdev dgram`
+  links, capture files in the workspace
+
+## Use of QNX-specific technology
+
+| QNX feature | Where Relais uses it |
+|---|---|
+| Resource manager | `relais-core` serves `/dev/relais` (`status`, `temoin`, `ctl`); interface reduced to `open`, `read`, `devctl` (QNX-01) |
+| Message passing with priority inheritance | Critical path from the received `STATUT` frame to the emitted order crosses three processes by messages, priorities 62 → 61 → 60 (QNX-02, CMD-04) |
+| Pulses | Timers and inter-process notifications; no busy waiting (QNX-02) |
+| Connection death notification | A crashing process is known by its peers through connection close — the machine cedes the mandate within the tick instead of waiting a silence timeout (QNX-05, DET-05) |
+| Security policy | Each process has a type: only `relais-net` opens sockets, only `relais-core` serves `/dev/relais`; test commands are absent from the production image (SEC-05, QNX-07) |
+| HAM supervision | Processes are launched and restarted by the QNX High Availability Manager (QNX-06) |
+| Kernel tracing | `trace_logf()` user events mark `STATUT` received, order emitted, role change, cession — the trace shows the whole critical path with effective priorities, network stack included (OBS-03, QNX-04) |
+
+## Repository layout
+
+```
+relais/
+├── README.md              this file
+├── LICENSE                Apache-2.0
+├── CONTRACT.md            frozen technical contract (journal, tick sequence, scenarios)
+├── core/                  portable C11 library: arbiter, node state machine, frames
+│   ├── include/relais/    the headers ARE the contract (types, frame, params,
+│   │                      arbiter, node, control, check, journal, invariants, mutant)
+│   ├── src/               one implementation, compiled three times (QNX, simulator, explorer)
+│   └── tests/             unit tests (plain binaries, exit 0 = green)
+├── target/                QNX processes: relais-net, relais-core, relais-ctl, relaisctl
+├── actuator/              arbiter + rack model: pc/ (simulated) and qnx/ (third machine, level C)
+├── image/                 mkqnximage fragments, security policy, per-machine identity (MAC)
+├── host/
+│   ├── bench/             machine launcher, orchestrator, programmed cable (Python 3)
+│   ├── explore/           exhaustive exploration of the core
+│   ├── simulate/          seeded simulation, fault-free twin
+│   ├── verify/            relais-verify: offline invariant checking of a journal
+│   ├── mutants/           deliberately defective variants M1–M8
+│   └── report/            self-contained HTML campaign report, curves
+├── scenarios/             reference trajectories and fault plans (JSON)
+├── docs/                  SPEC (English), PROTOCOL, TRUTH-TABLE, SAFETY, spec-fr (French original)
+└── codelab/               step-by-step tutorial
+```
+
+## The proof campaign
+
+Five levels, from logic to physics:
+
+| Level | Where | What is tested |
+|---|---|---|
+| 0 — unit | PC | frames, arbiter, node state machine, control law |
+| 1 — exhaustive exploration | PC | every bounded interleaving of the core, faults included; safety invariants checked in every state |
+| 2 — seeded simulation | PC | millions of ticks with a seeded timing model; any violating seed is shrunk to a minimal scenario and kept as a regression test |
+| 3 — real faults | QEMU/QNX | the full chain: machines killed, frozen, cables cut — swept across 100 instants of the period, at the 9 code death points P1–P9 |
+| 4 — hardware | two boards | real latencies (stretch level) |
+
+On top of it, **8 mutants** (deliberately defective builds: arbiter accepts
+anybody's order, ignores the tick label, plays the will past its horizon,
+mandate resets to zero, …) run the same campaign — the bench must flag every
+one. A mutant the bench does not catch is a defect **of the bench**.
+
+Targets per level and acceptance criteria:
+[docs/SPEC-2.md §7.8](docs/SPEC-2.md) and [docs/SPEC-ANNEX.md §13](docs/SPEC-ANNEX.md).
+
+## Honest limits
+
+- This project presents itself as a demonstrator **"aligned with"** UN
+  Regulation No. 79 Annex 6. It never claims to be "compliant" or
+  "certified", and it is not approvable as-is: it is a scale model, not a
+  vehicle system, and no functional-safety certification is in scope.
+- Latencies are **measured under QEMU emulation** on a shared PC — they are
+  distributions to be read as such, never proven worst cases. The two guests
+  share the host: a host load spike touches both.
+- Safety does not depend on time: the mandate rules make double command
+  impossible whatever the delays; time only affects how fast the handover is.
+- The simulated actuator is trusted and, at base/full level, a single point of
+  failure; its arbitration logic is deliberately tiny and fully explored. A
+  dual-channel actuator is a stretch extension.
+- A common-cause defect in the two copies of the same software is out of scope
+  (a dissimilar back-up is an extension). The disagreement detector (level C)
+  flags a miscomputing machine but does not arbitrate its value.
+- Killing QEMU is not cutting power to an ECU; the bench produces no
+  fine-grained hardware faults (e.g. flipped bits).
+
+## Documentation
+
+- [docs/SPEC.md](docs/SPEC.md) — specification, sections 0–4 (context, scope, design)
+- [docs/SPEC-2.md](docs/SPEC-2.md) — sections 5–8 (requirements, protocol formats, validation plan, demo)
+- [docs/SPEC-ANNEX.md](docs/SPEC-ANNEX.md) — sections 9–16 (deliverables, schedule, risks, acceptance, verified-vs-hypothesis, glossary, sources)
+- [docs/PROTOCOL.md](docs/PROTOCOL.md) — implementation-level protocol: byte-by-byte frames, tick sequence, state machines, journal
+- [docs/TRUTH-TABLE.md](docs/TRUTH-TABLE.md) — fault-by-fault expected behaviour
+- [docs/SAFETY.md](docs/SAFETY.md) — safety document modelled on Annex 6 §3.4.3.2
+- [CONTRACT.md](CONTRACT.md) — frozen contract for contributors
+- [docs/spec-fr.md](docs/spec-fr.md) — original French specification
+
+## Repository automation
+
+`main` is protected: everything goes through a pull request and the **Mergify
+merge queue** (rebase, linear history, batches up to 3, speculation bounded to
+2 parallel checks). Three required checks run on self-hosted runners
+(`r630-relais-01..03`, label `relais-worker`): `ci` (docs sanity + guard
+tests), `ci-budget` (every CI job must render its verdict within **5 minutes**
+— enforced by configuration guard), and `couche0` (declared `## Scope` per PR +
+forbidden patterns). A `pr-auto-merge` sweeper rebases ready PRs, and a
+conflict-resolution agent (`.github/fireworks/conflict_agent.py`) resolves
+rebase conflicts automatically; red tests are triaged by the `triage-rouge`
+workflow.
+
+## Licence
+
+Apache License 2.0 — see [LICENSE](LICENSE). Copyright 2026 Baptiste Faisy.
