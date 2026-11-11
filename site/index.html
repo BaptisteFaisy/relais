@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Relais — bounded-latency failover between two QNX computers</title>
+<meta name="description" content="Two QNX 8.0 computers steer the same actuator. The actuator is the arbiter and the clock: it never applies the order of a deposed machine.">
+<style>
+:root{--ink:#16202b;--mut:#5b6b7c;--line:#dde4ea;--acc:#0b6bcb;--ok:#0a7d43;--warn:#b26a00;--bg:#f6f8fa}
+*{box-sizing:border-box}
+body{margin:0;font:16px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;color:var(--ink);background:#fff}
+.wrap{max-width:960px;margin:0 auto;padding:0 20px}
+header{background:linear-gradient(180deg,#0d1b2a,#13293d);color:#fff;padding:56px 0 44px}
+header h1{margin:0 0 8px;font-size:38px;letter-spacing:-.5px}
+header .tag{color:#9fd0ff;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:13px;text-transform:uppercase;letter-spacing:.12em}
+header p.lead{font-size:20px;max-width:44em;color:#dce7f2;margin:14px 0 0}
+.badges{margin-top:22px;display:flex;gap:8px;flex-wrap:wrap}
+.badge{background:#1d3b57;border:1px solid #2d5a80;color:#cfe4f7;border-radius:999px;padding:4px 12px;font-size:13px}
+h2{font-size:26px;margin:44px 0 10px;letter-spacing:-.2px}
+h3{font-size:18px;margin:26px 0 6px}
+p{margin:10px 0}
+code,pre{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:13.5px}
+pre{background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:14px;overflow-x:auto}
+table{border-collapse:collapse;width:100%;margin:14px 0;font-size:15px}
+th,td{border:1px solid var(--line);padding:8px 10px;text-align:left;vertical-align:top}
+th{background:var(--bg);font-weight:600}
+td.ok{color:var(--ok);font-weight:600}
+.grid{display:grid;gap:16px}
+.g2{grid-template-columns:1fr 1fr}
+@media(max-width:760px){.g2{grid-template-columns:1fr}}
+figure{margin:0;border:1px solid var(--line);border-radius:8px;overflow:hidden;background:#000}
+figure img{display:block;width:100%;height:auto}
+figcaption{background:var(--bg);color:var(--mut);font-size:13.5px;padding:8px 10px;border-top:1px solid var(--line)}
+.card{border:1px solid var(--line);border-radius:10px;padding:16px 18px;background:#fff}
+.card h3{margin-top:0}
+.num{font-size:30px;font-weight:700;color:var(--acc);line-height:1.1}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin:18px 0}
+.kpi{border:1px solid var(--line);border-radius:10px;padding:14px}
+.kpi small{color:var(--mut);display:block;margin-top:4px;font-size:13px}
+a{color:var(--acc)}
+.note{border-left:4px solid var(--warn);background:#fff8ec;padding:12px 14px;border-radius:0 8px 8px 0;margin:18px 0}
+footer{border-top:1px solid var(--line);color:var(--mut);font-size:14px;padding:26px 0 46px;margin-top:50px}
+.arch{background:#0d1b2a;color:#cfe4f7;border-radius:8px;padding:16px;overflow-x:auto}
+.arch pre{background:none;border:0;color:inherit;padding:0;margin:0}
+</style>
+</head>
+<body>
+<header><div class="wrap">
+  <div class="tag">QNX Global Hackathon 2026 · Automotive &amp; Mobility</div>
+  <h1>Relais</h1>
+  <p class="lead">Two computers steer the same actuator. <strong>Only one commands.</strong> When it dies, freezes or loses its cable, the other takes over within a bounded, measured delay — and the machine that was evicted can never impose anything again, even if it wakes up believing it is still in charge.</p>
+  <div class="badges">
+    <span class="badge">Apache-2.0</span><span class="badge">C11 core, no clock · no file · no socket · no malloc</span>
+    <span class="badge">QNX 8.0 target</span><span class="badge">runs on a plain PC, no root</span>
+  </div>
+</div></header>
+
+<div class="wrap">
+
+<h2>The problem</h2>
+<p>Without a steering column, an assistance computer that goes silent leaves the wheels without a command. With nobody holding the wheel, nobody can take over within the second. <em>Silence is no longer a safe state.</em> Doubling the computer moves the difficulty to one question: <strong>who commands, and how do you change hands without a bump and without two masters?</strong></p>
+<p>The usual answer is a heartbeat and a timeout. The timeout is a guess: too short and you depose a healthy machine that was merely late; too long and the actuator stays without a command. Two neighbouring QNX projects on GitHub picked 100&nbsp;ms and 2&nbsp;000&nbsp;ms. Relais targets two periods — 10&nbsp;ms at 200&nbsp;Hz — and, more importantly, does not have to guess.</p>
+
+<h2>Four ideas that carry it</h2>
+<div class="grid g2">
+  <div class="card"><h3>1 · The actuator is the arbiter</h3><p>It hands out mandate numbers and withdraws one <em>only on its own evidence</em>: p+1 consecutive ticks without a valid order from the holder, or a cession from it. Two machines that no longer agree therefore cannot both command. The "is it dead or is the cable cut?" dilemma is settled without a third computer.</p></div>
+  <div class="card"><h3>2 · The actuator is the clock</h3><p>It beats a tick every period and every order names the tick it targets. No clock is synchronised between the machines, and an order computed before a freeze is stale <em>by construction</em>.</p></div>
+  <div class="card"><h3>3 · The will (testament)</h3><p>Every order carries the values expected for the next N ticks. During a handover the actuator plays the departed holder's plan, so the physical curve shows no hole.</p></div>
+  <div class="card"><h3>4 · Proof by exploration — and proof of the proof</h3><p>The protocol core is a pure state machine, explored exhaustively on a PC, then killed, frozen and unplugged for real. Eight deliberately defective builds (mutants) check that the bench actually sees faults.</p></div>
+</div>
+
+<h2>Architecture</h2>
+<div class="arch"><pre>
+              PC Linux, no root required
+   ┌──────────────┐   link between computers   ┌──────────────┐
+   │   machine A  │◄─────────►┌──────────┐◄───►│   machine B  │
+   │   holder     │           │programmable│    │   second     │
+   └──────┬───────┘           │   cable   │    └───────┬──────┘
+          │                   └──────────┘            │
+          ▼                                           ▼
+   ┌──────────────────────────────────────────────────────────┐
+   │  actuator: arbiter + rack model + tempo + the journal     │
+   └───────────────────────────┬──────────────────────────────┘
+                               ▼
+        orchestrator ──► QMP: stop, cont, quit, set_link
+                     └─► invariant verifier ──► report
+</pre></div>
+<p>Each computer is three isolated processes at fixed priorities: <code>relais-net</code> (62, the only one with a socket), <code>relais-core</code> (61, the resource manager <code>/dev/relais</code> and the protocol state machine), <code>relais-ctl</code> (60, the control law as a service). A crash is <em>known</em>, not guessed: peers see the connection close and the machine cedes the mandate within the tick.</p>
+
+<h2>Measured, not asserted</h2>
+<div class="kpis">
+  <div class="kpi"><div class="num">10 000 330</div><small>states explored exhaustively, two simultaneous faults, 51 s — <strong>0 violation</strong></small></div>
+  <div class="kpi"><div class="num">19 659</div><small>simulated fault runs: swept deaths, freezes up to 8 s, cut links, forged and stale frames — <strong>0 failure</strong></small></div>
+  <div class="kpi"><div class="num">1 000 000 000</div><small>ticks simulated at level C — <strong>0 violation</strong>, worst gap 0</small></div>
+  <div class="kpi"><div class="num">8 / 8</div><small>mutants flagged, each by the invariant it was meant to break</small></div>
+  <div class="kpi"><div class="num">5 651</div><small>unit and protocol checks green</small></div>
+  <div class="kpi"><div class="num">0</div><small>tick without a fresh order during a handover, level C</small></div>
+</div>
+<table>
+<tr><th>Guarantee</th><th>Base level (S)</th><th>Full level (C)</th></tr>
+<tr><td>Gap between two fresh orders after the holder dies</td><td class="ok">≤ 3 periods = 15 ms at 200 Hz, bridged by the will (measured: 1 tick)</td><td class="ok">zero — the certified second's shadow substitutes from the first miss</td></tr>
+<tr><td>Double command</td><td class="ok">impossible by construction, then explored exhaustively</td><td class="ok">same, plus order-vs-shadow comparison flags a miscomputing machine</td></tr>
+<tr><td>The revenant (frozen then thawed)</td><td class="ok">its stale orders are dropped twice over: wrong holder, wrong tick</td><td class="ok">same; it rejoins as a second without disturbing the command</td></tr>
+<tr><td>Both machines gone</td><td class="ok">the will plays out, then the fallback law within N+1 ticks</td><td class="ok">same, red lamp and stop requested</td></tr>
+</table>
+<p><a href="report.html">→ the campaign report, regenerated by the CI at every deploy</a> · <a href="https://github.com/BaptisteFaisy/relais/blob/main/docs/RESULTS.md">all the numbers and how to reproduce them</a></p>
+
+<h2>One machine in a real virtual machine, frozen by QMP</h2>
+<p>The actuator and machine A run on the host; <strong>machine B runs inside a QEMU guest</strong> — a Linux kernel booted with a hand-made initramfs holding nothing but a static <code>relais-node</code> and a 60-line init. The fault is injected through QMP: <code>stop</code> freezes the whole guest (CPU, timers, network), <code>cont</code> wakes it.</p>
+<div class="grid g2">
+  <figure><img src="figures/guest-frozen.png" alt="The QEMU guest while frozen, holding mandate 1" loading="lazy">
+  <figcaption><strong>While frozen.</strong> The guest's own console: <code>role=holder mandate=1</code>, orders and shadows counted, the screen stopped mid-line.</figcaption></figure>
+  <figure><img src="figures/guest-after.png" alt="The same guest after thawing, standing down as second" loading="lazy">
+  <figcaption><strong>After <code>cont</code>.</strong> <code>role=second mandate=0 seen_holder=A</code>, importing the replica: the revenant stood down by itself.</figcaption></figure>
+</div>
+<figure style="margin-top:16px;background:#fff"><img src="figures/proof.svg" alt="Command curve through the freeze, source per tick and mandates" loading="lazy">
+<figcaption>The command curve through the freeze, the source of every tick (holder → testament → holder), and the mandates. Journal of that run: 99 ticks, <strong>0 violation</strong>, worst gap 3 against a bound of p+1 = 4, deviation from the twin without fault 0.</figcaption></figure>
+<pre>tick 30  mandate_granted  B  mandate 1    the virtual machine takes the mandate
+tick 60  QMP stop         misses 1,2,3    the will covers every tick
+tick 63  mandate_revoked  B  detail=4     revoked on the actuator's own evidence
+tick 63  mandate_granted  A  mandate 2    the handover, zero tick without a value
+tick 67  order_rejected   B  detail=1 ×4  the revenant's stale orders, refused
+tick 76  certified        B  mandate 2    back as a certified second</pre>
+
+<h2>Run it yourself</h2>
+<pre>git clone https://github.com/BaptisteFaisy/relais.git &amp;&amp; cd relais
+make -j$(nproc)     # gcc, make, python3 — nothing else
+make demo           # three real processes on your PC, a handover, the verdict
+make test           # 5 651 checks
+make explore        # exhaustive exploration of the core
+make campaign       # the fault campaign
+python3 host/bench/vm_demo.py          # machine B inside QEMU, frozen by QMP
+python3 host/mutants/run_mutants.py    # 8/8 mutants must be flagged</pre>
+
+<h2>Honest limits</h2>
+<div class="note">
+<p><strong>Aligned with</strong> annex 6 §3.4.3.2 of UN Regulation No. 79 — never <em>compliant</em>, never certifiable. Every latency quoted is a <strong>measured worst case under emulation</strong>, not a proven worst case.</p>
+<p>The QNX layer is written and syntax-checked under <code>-Werror</code> against QNX stubs (<code>make -C target syntax</code>); <strong>it has never been compiled with the SDP 8.0 nor booted</strong>, because no SDP is available here. The guest in the demonstration above is Linux, not QNX: the protocol core is the same C11 either way. A machine that computes wrong is <em>detected</em>, not outvoted — masking it needs a third machine. The actuator is a declared single point of failure; its arbitration core is tiny and exhaustively explored.</p>
+</div>
+
+<h2>Read further</h2>
+<table>
+<tr><th><a href="https://github.com/BaptisteFaisy/relais/blob/main/README.md">README</a></th><td>pitch, one-command demo, QNX evidence, status of the tree</td></tr>
+<tr><th><a href="https://github.com/BaptisteFaisy/relais/blob/main/docs/SPEC.md">Specification</a></th><td>the full requirements, level by level (S / C / X), with verification means</td></tr>
+<tr><th><a href="https://github.com/BaptisteFaisy/relais/blob/main/docs/PROTOCOL.md">Protocol</a></th><td>frame format byte by byte, the seven messages, the tick sequence</td></tr>
+<tr><th><a href="https://github.com/BaptisteFaisy/relais/blob/main/docs/SAFETY.md">Safety concept</a></th><td>principle, logic, redundancy, built-in checks, FMEA, limits of effectiveness</td></tr>
+<tr><th><a href="https://github.com/BaptisteFaisy/relais/blob/main/docs/RESULTS.md">Results</a></th><td>every measured number, and the command that produced it</td></tr>
+<tr><th><a href="https://github.com/BaptisteFaisy/relais/blob/main/codelab/README.md">Codelab</a></th><td>nine steps, from <code>make demo</code> to your own control law</td></tr>
+</table>
+
+</div>
+<footer><div class="wrap">
+  Relais — Apache-2.0 · <a href="https://github.com/BaptisteFaisy/relais">github.com/BaptisteFaisy/relais</a> ·
+  this page and its report are rebuilt and republished by the repository's own CI on every merge.
+</div></footer>
+</body>
+</html>
