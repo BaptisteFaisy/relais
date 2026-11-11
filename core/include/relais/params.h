@@ -14,6 +14,10 @@ typedef struct {
   uint16_t request_window; /* ticks in that window */
   float epsilon;           /* order/shadow agreement tolerance, full-scale fraction */
   float delta;             /* continuity tolerance at handover, full-scale fraction */
+  float dissimilar_epsilon;/* DEG-08: widened order/shadow band for a dissimilar
+                              second; 0 disables it (identical backup, unchanged) */
+  float dissimilar_delta;  /* DEG-08: admitted continuity bump at the handover
+                              for a dissimilar second, >= delta */
   uint32_t degraded_ticks; /* DEG-05: ticks without redundancy before stop request */
   float max_amplitude;     /* ACT-05 command bound */
   float max_slew;          /* ACT-05 bound on the change per tick */

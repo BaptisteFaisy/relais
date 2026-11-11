@@ -247,9 +247,11 @@ static void certify(relais_arb *a, relais_arb_out *out, relais_tick tick, const 
   relais_node second = a->holder == RELAIS_NODE_A ? RELAIS_NODE_B : RELAIS_NODE_A;
   if (s->shadow == NULL || s->shadow->sender != second) {
     a->certify_streak = 0;
+    a->widen_seen = false;
     if (a->certified && ++a->shadow_misses > a->params.patience) {
       a->certified = false;
       a->certified_node = RELAIS_NODE_NONE;
+      a->certified_dissimilar = false;
       a->shadow_misses = 0;
       push_event(out, RELAIS_EV_DECERTIFIED, second, a->mandate, tick, 0);
     }
@@ -260,17 +262,32 @@ static void certify(relais_arb *a, relais_arb_out *out, relais_tick tick, const 
     float gap = fabsf(s->order->value - s->shadow->value);
     a->last_order = s->order->value;
     a->last_shadow = s->shadow->value;
-    if (gap <= a->params.epsilon) {
+    bool identical = gap <= a->params.epsilon;
+    /* DEG-08: a dissimilar backup covers the defect common to both copies of
+     * the software, so its shadow can legitimately stand inside a widened band.
+     * Certified as DISSIMILAR (not equivalent): the disagreement alert does not
+     * fire inside that band, the lamp stays yellow, and the handover admits the
+     * published dissimilar_delta bump. At dissimilar_epsilon == 0 this branch
+     * is dead and the behaviour is exactly the identical-backup one. */
+    bool dissimilar = !identical && a->params.dissimilar_epsilon > 0.0f &&
+                      gap <= a->params.dissimilar_epsilon;
+    if (identical || dissimilar) {
       a->disagree_streak = 0;
       /* DEG-02: the lamp follows the cause; a disagreement that stops must stop
        * lighting the lamp, or the warning means nothing. */
       a->disagreement = false;
+      if (dissimilar) {
+        a->widen_seen = true;
+        if (a->certified) a->certified_dissimilar = true;
+      }
       if (a->certify_streak < 255) a->certify_streak++;
     } else {
       a->certify_streak = 0;
+      a->widen_seen = false;
       if (a->certified) {
         a->certified = false;
         a->certified_node = RELAIS_NODE_NONE;
+        a->certified_dissimilar = false;
         push_event(out, RELAIS_EV_DECERTIFIED, second, a->mandate, tick, 0);
       }
       if (++a->disagree_streak >= 3 && !a->disagreement) {
@@ -284,6 +301,7 @@ static void certify(relais_arb *a, relais_arb_out *out, relais_tick tick, const 
   if (!a->certified && a->certify_streak >= a->params.certify_ticks) {
     a->certified = true;
     a->certified_node = second;
+    a->certified_dissimilar = a->widen_seen;
     push_event(out, RELAIS_EV_CERTIFIED, second, a->mandate, tick, a->certify_streak);
   }
 }
@@ -327,9 +345,10 @@ static void update_lamp(relais_arb *a, relais_arb_out *out, relais_tick tick) {
     lamp = RELAIS_LAMP_YELLOW;
     cause = a->holder == RELAIS_NODE_NONE ? RELAIS_CAUSE_NODE_MISSING
                                           : RELAIS_CAUSE_LINK_LOST;
-  } else if (!a->certified) {
+  } else if (!a->certified || a->certified_dissimilar) {
     lamp = RELAIS_LAMP_YELLOW;
-    cause = RELAIS_CAUSE_SECOND_UNCERTIFIED;
+    cause = RELAIS_CAUSE_SECOND_UNCERTIFIED; /* DEG-08: a dissimilar second is
+                                                not an equivalent redundancy */
   }
   /* Mutant M8 puts the lamp out when a link comes back, second uncertified. */
   if (RELAIS_MUT(RELAIS_M8_LAMP_EARLY_OFF) && out->source == RELAIS_SRC_HOLDER) {
@@ -443,6 +462,9 @@ void relais_arb_step(relais_arb *a, relais_tick tick, const relais_msg *msgs, si
   out->statut.certified_node = a->certified_node;
   out->statut.lamp = a->lamp;
   out->statut.cause = a->cause;
+  out->statut.flags = (uint8_t)((a->certified && a->certified_dissimilar)
+                                    ? RELAIS_FLAG_DISSIMILAR
+                                    : 0u); /* DEG-08 published on the wire */
   out->statut.stop_requested = a->stop_requested;
   out->statut.meas = *meas;
   out->statut.meas.applied = out->value;

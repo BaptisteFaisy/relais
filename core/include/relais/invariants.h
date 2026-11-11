@@ -23,6 +23,7 @@ typedef struct {
   bool disagreement_seen;       /* DET-09: the actuator must notice it */
   bool detection_reported;
   relais_tick double_fault_at;  /* tick where the single-fault hypothesis broke */
+  bool dissimilar;              /* DEG-08: the certified second is dissimilar */
 
   /* DET-03 / MAN-04: what evidence the actuator had before it changed hands */
   uint8_t max_misses;
@@ -81,6 +82,11 @@ void relais_inv_double_fault(relais_inv *v, relais_tick tick);
 /* A machine emits a wrong value (F8, INJ-10): continuity is not claimed any
  * more, detection is (DET-09). */
 void relais_inv_value_fault(relais_inv *v, bool yes, relais_tick at);
+/* DEG-08: the certified second is a dissimilar backup. The continuity bound at
+ * the handover becomes dissimilar_delta instead of delta (the order/shadow
+ * agreement at epsilon no longer holds for a dissimilar law). Without this
+ * call the behaviour is exactly the identical-backup one. */
+void relais_inv_dissimilar(relais_inv *v, bool yes);
 /* Feed one twin value for the same tick, or NULL when there is no twin. */
 void relais_inv_on_tick(relais_inv *v, const relais_jr_tick *r, const float *twin_value);
 void relais_inv_on_event(relais_inv *v, const relais_jr_event *e);

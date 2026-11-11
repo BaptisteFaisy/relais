@@ -59,6 +59,15 @@ void relais_inv_value_fault(relais_inv *v, bool yes, relais_tick at) {
   v->value_fault_at = at;
 }
 
+void relais_inv_dissimilar(relais_inv *v, bool yes) {
+  if (v == NULL) return;
+  v->dissimilar = yes;
+  /* DEG-08: the order/shadow agreement at epsilon no longer holds for a
+   * dissimilar second; the continuity bump admitted at the handover is the
+   * published dissimilar_delta, not delta. */
+  v->deviation_bound = yes ? v->params.dissimilar_delta : v->params.delta;
+}
+
 void relais_inv_violate(relais_inv *v, const char *id, relais_tick tick, const char *detail) {
   if (v == NULL) return;
   v->violations++;
