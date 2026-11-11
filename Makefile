@@ -24,13 +24,15 @@ SIMULATE_SRC := $(sort $(wildcard host/simulate/*.c))
 ACTUATOR_SRC := $(sort $(wildcard actuator/*.c actuator/pc/*.c))
 VERIFY_SRC := $(sort $(wildcard host/verify/*.c))
 NODE_SRC := $(sort $(wildcard host/node/*.c))
+BRIDGE_SRC := host/difftest/bridge.c
 LIB := $(BUILD)/librelais.a
 
 MUTANTS := 1 2 3 4 5 6 7 8
 
 .PHONY: all test explore simulate verify mutants report demo campaign clean size
 all: $(LIB) $(TEST_BIN) $(EXPLORE_BIN) $(BUILD)/relais-simulate \
-     $(BUILD)/relais-actuator $(BUILD)/relais-verify $(BUILD)/relais-node
+     $(BUILD)/relais-actuator $(BUILD)/relais-verify $(BUILD)/relais-node \
+     $(BUILD)/relais-bridge
 
 $(LIB): $(CORE_OBJ)
 	@mkdir -p $(dir $@)
@@ -72,6 +74,11 @@ $(BUILD)/relais-verify: $(VERIFY_SRC) $(LIB)
 $(BUILD)/relais-node: $(NODE_SRC) $(LIB)
 	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS) $(CPPFLAGS) $(NODE_SRC) $(LIB) $(LDLIBS) -o $@
+
+# Differential-test bridge: exposes the C arbiter over JSON lines to arbiter_py.py.
+$(BUILD)/relais-bridge: $(BRIDGE_SRC) $(LIB)
+	@mkdir -p $(dir $@)
+	$(CC) $(CFLAGS) $(CPPFLAGS) $(BRIDGE_SRC) $(LIB) $(LDLIBS) -o $@
 
 test: $(TEST_BIN)
 	@fail=0; for b in $(TEST_BIN); do \
