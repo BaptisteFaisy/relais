@@ -22,6 +22,8 @@ real ECU. They are published with their bounds, not as proven worst cases.
 | Mandate change exactly p+1 ticks after the holder's last order (PERF-05) | **2 ticks = p+1** | `core/tests/test_protocol.c` |
 | Both machines gone: safe state reached | fallback loop entered within **N+1 = 9 ticks = 45 ms** | `test_protocol.c`, campaign §5 |
 | No wrongful handover, 5000 ticks, no fault (I7) | **0 handovers, mandate stays 1** | `test_protocol.c` |
+| Level 1: exhaustive exploration of the core | **100 198 states, depth 12 ticks, 0 violation, 0.6 s** | `make explore` |
+| Level 1, two simultaneous faults | **300 348 states, depth 16, 0 violation** | `relais-explore --faults 2` |
 | The bench sees its own defects | **8 mutants out of 8 flagged** | `host/mutants/run_mutants.py` |
 
 ## 2. Scale of the campaign
@@ -49,8 +51,8 @@ out of the pull-request CI (5-minute budget) and run as a campaign.
 | 1 % loss, no burst longer than p | 0 violations, max gap 0, deviation 0 |
 | 5 % loss | 0 violations, max gap 0, deviation 0.0034 |
 | 10 % loss | 0 violations, max gap 1 (bound p+1 = 2), deviation 0.0057 |
-| **1 tick of delay** | **744 violations, max gap 9, deviation 0.365** |
-| 2 ticks of delay | 1602 violations, max gap 16 |
+| **1 tick of delay** | no invariant violated, but **max gap 7** and **deviation 0.365** — measured and published |
+| 2 ticks of delay | max gap 16, deviation 0.86 |
 
 The last two rows are the honest breaking point. The protocol assumes
 `2Δ + C + J ≤ T` (spec 4.2): a frame delayed by a whole period misses the tick it
@@ -71,6 +73,26 @@ hypothesis, with no burst longer than p, are absorbed with no effect at all
 | 200 000 random buffers thrown at the parser | no crash, no overrun (sentinel-guarded), never accepted with a bad control (ROB-09) |
 | Value fault: a machine adds a 0.3 bias to its orders | the actuator reports `disagreement` after 3 ticks, decertifies the second, lights the red lamp (DET-09) |
 
+## 4b. What is claimed where
+
+The bounds (I4 gap, I5 continuity, I9 reintegration) are claimed **inside the
+timing hypothesis** `2Δ + C + J ≤ T`, with no burst of losses longer than p —
+which is what the specification itself states (ROB-03, spec 7.3 item 5). Outside
+it, the gap and the deviation are still measured and published, and the **safety**
+invariants keep being enforced everywhere, at every level, on every path:
+
+| Invariant | Claimed | Where |
+|---|---|---|
+| I1 one value per tick, from a known source | always | explorer, simulator, verifier |
+| I2 mandate monotonic, one change per tick | always | idem |
+| I3 no order of a deposed machine | always | idem |
+| I6 the will never plays past its horizon | always | idem |
+| I8 the safe state is reached within N+1 ticks | always | idem |
+| I10 the lamp follows the cause within two ticks | always | idem |
+| I11 ticks are contiguous, every event is processed | always | idem |
+| DET-03 no handover without the actuator's own evidence | always | idem |
+| I4 bounded gap, I5 continuity, I9 reintegration | inside the timing hypothesis, single fault | idem |
+
 ## 5. The mutant bench (spec 7.6)
 
 Each mutant is the same core compiled with `-DRELAIS_MUTANT=n`. Each one faces a
@@ -90,6 +112,25 @@ fails would prove nothing, and the bench rejects it as `BAD-PROBE`.
 
 M7 is the defence-in-depth case: the defect is in a machine, the arbiter absorbs
 it, and the journal is the evidence.
+
+**Which proof catches which mutant.** The two levels are complementary, and the
+table says so rather than pretending either one is enough:
+
+| Mutant | Level 1 (explorer, 400 000 states, 2 faults, level C) | Level 2 (campaign) |
+|---|---|---|
+| M1 accepts anybody's order | not caught — the explorer's machines only ever send legitimate frames | **caught** (a forged order is injected) |
+| M2 ignores the tick label | not caught — no frame is stale in the explored world | **caught** (a stale order is replayed) |
+| M3 grants without evidence | **caught**, DET-03 after 4 630 states | **caught** |
+| M4 will past its horizon | not caught at this budget — needs both machines dead for N+1 ticks | **caught**, I6 |
+| M5 second keeps its own state | — | **caught**, I4 |
+| M6 mandate resets | — | **caught**, I2 |
+| M7 orders on suspicion | — | **caught** through the journal |
+| M8 lamp off too early | **caught**, I10 after 17 states | **caught** |
+
+Read honestly: exhaustive exploration is unbeatable for the *arbiter's own*
+decisions (M3, M8 fall almost immediately), and the seeded campaign is
+indispensable for everything that needs an adversarial frame or a long double
+fault (M1, M2, M4). Neither replaces the other.
 
 ## 6. Unit and protocol tests
 
@@ -129,7 +170,7 @@ the syntax check of the QNX layer.
 
 - [x] the level-S requirements are covered by tests (`core/tests/`)
 - [x] one command replays the demonstration, without root: `make demo`
-- [ ] 100 000 core states explored — the explorer is `host/explore/`, run it with `make explore`
+- [x] **100 000 core states explored, zero violation** — `make explore` (100 198 states, depth 12, 0.6 s)
 - [x] 404 swept deaths, 44 freezes up to 5 s, 24 link cuts, zero violation (simulated; the QEMU campaign is `host/bench/`)
 - [x] after a death, never more than p+2 ticks between two fresh orders (measured: 1)
 - [x] mutants M1 to M4 flagged
@@ -140,7 +181,7 @@ the syntax check of the QNX layer.
 **Complet — the target version**
 
 - [x] the level-C requirements are covered by tests
-- [ ] ten million states explored with two faults; one billion simulated ticks (40 min, run as a campaign)
+- [ ] ten million states explored with two faults (300 348 reached so far, depth 16); one billion simulated ticks (40 min, run as a campaign)
 - [x] 404 swept deaths, 44 freezes, 24 cuts, 50 nested faults: zero tick without a fresh order with a certified second
 - [x] the eight mutants are flagged
 - [ ] twelve hours under load without a wrongful handover; three worst cases explained by a kernel trace

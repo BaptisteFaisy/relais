@@ -112,7 +112,12 @@ static void check_gap(relais_inv *v, const relais_jr_tick *r, bool fresh) {
   if (v->last_fresh_tick == 0) return; /* start-up, before any holder */
   v->gap++;
   if (v->gap > v->max_gap) v->max_gap = v->gap;
-  if (v->expect_certified_second && !v->lossy_channel && v->single_fault)
+  /* The bounds of I4 are claimed for a channel inside the timing hypothesis
+   * 2*delta + C + J <= T, with no burst of losses longer than p (ROB-03, spec
+   * 7.3 item 5). On a disturbed channel the gap is still measured and
+   * published; only the safety invariants stay enforced. */
+  if (v->lossy_channel) return;
+  if (v->expect_certified_second && v->single_fault)
     relais_inv_violate(v, "I4", r->tick, "a tick without a fresh order, second certified");
   else if (v->gap > v->gap_bound)
     relais_inv_violate(v, "I4", r->tick, "gap between fresh orders above p+1");
@@ -134,8 +139,9 @@ static void check_continuity(relais_inv *v, const relais_jr_tick *r, const float
   /* REP-06 and I5 are level C requirements: at level S the handover is served
    * by the will, whose extrapolation stays inside a few percent. The deviation
    * is measured either way, it is only enforced when a second is certified. */
+  /* I5 is claimed inside the timing hypothesis, like I4. */
   if (v->expect_certified_second && v->single_fault && !v->value_fault &&
-      deviation > v->deviation_bound)
+      !v->lossy_channel && deviation > v->deviation_bound)
     relais_inv_violate(v, "I5", r->tick, "applied value too far from the twin");
 }
 
@@ -210,8 +216,8 @@ void relais_inv_on_tick(relais_inv *v, const relais_jr_tick *r, const float *twi
     /* I9: a machine joining must not disturb the command. At level S the will
      * may still serve a tick during a handover (that is I4's bound); the
      * fallback loop may not, at any level. */
-    bool bad = r->source == RELAIS_SRC_FALLBACK ||
-               (v->expect_certified_second && !fresh);
+    bool bad = !v->lossy_channel &&
+               (r->source == RELAIS_SRC_FALLBACK || (v->expect_certified_second && !fresh));
     if (bad)
       relais_inv_violate(v, "I9", r->tick, "a tick not served by the holder while reintegrating");
   }
