@@ -262,6 +262,9 @@ static void certify(relais_arb *a, relais_arb_out *out, relais_tick tick, const 
     a->last_shadow = s->shadow->value;
     if (gap <= a->params.epsilon) {
       a->disagree_streak = 0;
+      /* DEG-02: the lamp follows the cause; a disagreement that stops must stop
+       * lighting the lamp, or the warning means nothing. */
+      a->disagreement = false;
       if (a->certify_streak < 255) a->certify_streak++;
     } else {
       a->certify_streak = 0;

@@ -112,14 +112,14 @@ static void beat(act_t *cfg, relais_arb *arb, relais_plant *plant, relais_tick t
   size_t n = drain(cfg, msgs, RELAIS_IN_MSG_MAX);
   relais_meas meas;
   memset(&meas, 0, sizeof meas);
-  double seconds = (double)(tick > 0 ? tick - 1 : 0) * relais_params_period_s(&cfg->params);
+  double seconds = (double)(tick > 0 ? tick - 1 : 0) * relais_params_step_s(&cfg->params);
   meas.pos = plant->pos;
   meas.vel = plant->vel;
   meas.setpoint = relais_traj_setpoint(&cfg->traj, seconds);
   relais_arb_out out;
   relais_arb_step(arb, tick, msgs, n, &meas, &out);
-  float dt = (float)relais_params_period_s(&cfg->params);
-  relais_plant_step(plant, out.value, relais_traj_disturbance(&cfg->traj, seconds), dt);
+  relais_plant_step(plant, out.value, relais_traj_disturbance(&cfg->traj, seconds),
+                    (float)relais_params_step_s(&cfg->params));
   meas.pos = plant->pos;
   meas.vel = plant->vel;
   meas.applied = out.value;
