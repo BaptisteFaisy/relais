@@ -20,8 +20,13 @@ static const fault_name_t FAULT_NAMES[] = {
     {"cut-actuator", SIM_F_CUT_ACT}, {"cut-peer", SIM_F_CUT_PEER},
     {"restore", SIM_F_RESTORE}, {"slow", SIM_F_SLOW},       {"bias", SIM_F_BIAS},
     {"restart", SIM_F_RESTART}, {"crash", SIM_F_CRASH_PROC},
+    {"update", SIM_F_UPDATE}, {"handover", SIM_F_HANDOVER},
     {"forge", SIM_F_FORGE}, {"forge-stale", SIM_F_FORGE_STALE},
 };
+
+/* REL-10: how long an update keeps a machine out of service when the fault
+ * carries no explicit duration (the "installation" window, in ticks). */
+#define SIM_UPDATE_INSTALL_TICKS 20u
 
 static sim_fault_kind parse_kind(const char *name) {
   for (size_t i = 0; i < sizeof FAULT_NAMES / sizeof FAULT_NAMES[0]; i++)
@@ -79,9 +84,66 @@ static void restore_links(sim_node_t *nd) {
   nd->slow_every = 0;
 }
 
+/* DEG-03: a machine comes back through relais_node_init, exactly like a reboot:
+ * empty control state, no role, no mandate. It therefore returns as an unarmed
+ * second and must be RECERTIFIED by the actuator before it can hold a mandate
+ * again (DEG-07, spec 4.6). `clear_links` is what tells a restart of a machine
+ * whose links were cut from the wake-up of a machine coming out of an update. */
+static void reboot_node(sim_t *s, sim_node_t *nd, bool clear_links) {
+  nd->dead = false;
+  nd->frozen_until = 0;
+  nd->reinit_at = 0;
+  if (clear_links) restore_links(nd);
+  relais_node_init(&nd->sm, &s->params, nd->sm.self);
+}
+
+/* REL-09: the machine cedes the mandate in the same tick, through the very
+ * call a maintenance tool makes (relais_node_on_handover). The cession reaches
+ * the actuator now, so the handover takes effect at the next tick instead of
+ * waiting for the p+1 ticks of silence proof (MAN-04). A machine that is not
+ * the holder has nothing to cede: the call emits nothing. */
+static void cede_now(sim_t *s, sim_node_t *nd, sim_node_t *peer, uint32_t tick) {
+  relais_node_out out;
+  relais_node_on_handover(&nd->sm, &out);
+  sim_deliver_outputs(s, nd, peer, &out, tick > 0 ? tick - 1 : 0, tick);
+}
+
+/* REL-10: one machine goes down for an update, cleanly.
+ *
+ * The cession comes FIRST, and that is the whole point. A machine that cedes
+ * hands the actuator a piece of evidence it can act on at the very next tick
+ * (REL-06), so the certified second is appointed in one tick and the shadow it
+ * already sent for that tick is a fresh value (REL-05): the handover costs ONE
+ * tick. Without the cession the actuator could only wait for its own proof of
+ * silence, p+1 ticks without a valid order (MAN-04); the command would still be
+ * served, but the handover would depend on a timeout instead of on an
+ * intention. An update is a PLANNED absence, so it must not pay for a silence
+ * detector.
+ *
+ * A machine that is only the second has no mandate to cede:
+ * relais_node_on_handover emits nothing and the machine simply goes out of
+ * service, which costs a yellow lamp (DEG-01) and nothing else.
+ */
+static void start_update(sim_t *s, sim_node_t *nd, sim_node_t *peer, const sim_fault_t *f,
+                         uint32_t tick) {
+  cede_now(s, nd, peer, tick);
+  nd->frozen_until = tick + (f->arg > 0 ? f->arg : SIM_UPDATE_INSTALL_TICKS);
+  nd->reinit_at = nd->frozen_until + 1; /* installation window, then the reboot */
+}
+
+/* The reboot of an updated machine belongs to the fault model, so it fires even
+ * when no other fault is declared at that tick. */
+static void pending_reboots(sim_t *s, uint32_t tick) {
+  for (int i = 0; i < SIM_NODE_COUNT; i++) {
+    sim_node_t *nd = &s->nodes[i];
+    if (nd->reinit_at != 0 && tick >= nd->reinit_at) reboot_node(s, nd, false);
+  }
+}
+
 /* Returns the number of faults active at the end of this tick: more than one
  * means the single-fault hypothesis is over (spec 3.3). */
 uint32_t sim_apply_faults(sim_t *s, uint32_t tick) {
+  pending_reboots(s, tick); /* REL-10: an updated machine wakes up on its own */
   for (uint32_t i = 0; i < s->fault_count; i++) {
     const sim_fault_t *f = &s->faults[i];
     if (f->at_tick != tick) continue;
@@ -100,12 +162,9 @@ uint32_t sim_apply_faults(sim_t *s, uint32_t tick) {
         break;
       case SIM_F_SLOW: nd->slow_every = f->arg > 1 ? f->arg : 3; break;
       case SIM_F_BIAS: relais_node_set_bias(&nd->sm, f->value); break;
-      case SIM_F_RESTART:
-        nd->dead = false;
-        nd->frozen_until = 0;
-        restore_links(nd);
-        relais_node_init(&nd->sm, &s->params, nd->sm.self); /* DEG-03, ROB-06 */
-        break;
+      case SIM_F_RESTART: reboot_node(s, nd, true); break; /* DEG-03, ROB-06 */
+      case SIM_F_UPDATE: start_update(s, nd, peer, f, tick); break;
+      case SIM_F_HANDOVER: cede_now(s, nd, peer, tick); break;
       case SIM_F_CRASH_PROC: {
         /* DET-05: a critical process dies, the machine cedes in the same tick.
          * QNX-06: the supervisor restarts it, which takes a few ticks during

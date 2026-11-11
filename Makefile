@@ -43,7 +43,7 @@ $(BUILD)/core/%.o: core/src/%.c
 # The protocol-level tests drive the simulator world: they link the same
 # pipeline instead of re-writing one (no duplication between test and bench).
 SIM_SRC := host/simulate/sim.c host/simulate/sim_faults.c
-$(BUILD)/test_protocol $(BUILD)/test_law $(BUILD)/test_dissimilar: $(BUILD)/test_%: \
+$(BUILD)/test_protocol $(BUILD)/test_law $(BUILD)/test_ota $(BUILD)/test_dissimilar: $(BUILD)/test_%: \
     core/tests/test_%.c core/tests/test_util.c $(SIM_SRC) $(LIB)
 	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS) $(CPPFLAGS) -Ihost/simulate $< core/tests/test_util.c \

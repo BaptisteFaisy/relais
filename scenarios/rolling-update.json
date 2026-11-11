@@ -1,0 +1,41 @@
+{
+  "params": {
+    "T": 5,
+    "p": 1,
+    "N": 8
+  },
+  "ticks": 200,
+  "trajectory": {
+    "kind": "slalom",
+    "amp": 0.6,
+    "freq": 0.5
+  },
+  "id": 11,
+  "name": "rolling-update",
+  "seed": 1011,
+  "faults": [
+    {
+      "at_tick": 30,
+      "type": "update",
+      "target": "B",
+      "ticks": 20
+    },
+    {
+      "at_tick": 60,
+      "type": "handover",
+      "target": "A"
+    },
+    {
+      "at_tick": 80,
+      "type": "update",
+      "target": "A",
+      "ticks": 20
+    },
+    {
+      "at_tick": 120,
+      "type": "handover",
+      "target": "B"
+    }
+  ],
+  "note": "REL-10: both machines updated in turn. 'update' stops a machine cleanly (it cedes first when it holds the mandate, DET-05), keeps it out of service for 'ticks' periods, then reboots it through relais_node_init: it comes back empty and must be certified again (DEG-03, DEG-07). 'handover' is the voluntary cession of the holder (REL-09). Instants chosen so every step has the time to be certified: B out 30..50, certified again 54; A cedes 60, B holds 61, A certified 64; A out 80..100, certified again 104; B cedes 120, A holds 121, B certified 124. Not one tick is served by anything else than a fresh order."
+}

@@ -31,6 +31,8 @@ typedef enum {
   SIM_F_BIAS,     /* F8: wrong value emitted */
   SIM_F_RESTART,
   SIM_F_CRASH_PROC, /* a process of the machine dies: DET-05 cession */
+  SIM_F_UPDATE,     /* REL-10: clean stop for an update, reboot arg ticks later */
+  SIM_F_HANDOVER,   /* REL-09: the holder cedes voluntarily, for maintenance */
   SIM_F_FORGE,      /* a machine forges an order it is not entitled to (SEC-04) */
   SIM_F_FORGE_STALE /* the holder replays an order for a past tick (ACT-09) */
 } sim_fault_kind;
@@ -57,6 +59,7 @@ typedef struct {
   bool cut_peer;  /* ETAT/SUIVI never reach the peer */
   bool deaf;      /* it never hears the actuator */
   uint32_t slow_every; /* drop one tick out of slow_every */
+  uint32_t reinit_at;  /* REL-10: tick of the reboot after an update, 0 = none */
   uint32_t tick_count;
 } sim_node_t;
 
