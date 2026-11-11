@@ -115,6 +115,21 @@ jobs:
       - name: Démonstration déterministe (une commande, sans QNX ni root)
         run: python3 host/bench/relais_bench.py --demo --sim --out runs/ci-demo
 
+      - name: Rapport de campagne HTML autonome (OBS-05)
+        run: |
+          mkdir -p runs/ci-campaign/run-death
+          ./build/relais-simulate --ticks 800 --seed 7 --level complet \
+            --fault 300:death:0 --scenario slalom-death-A --id 2 \
+            --journal runs/ci-campaign/run-death/actuator.jsonl \
+            --twin-journal runs/ci-campaign/run-death/twin.jsonl --quiet
+          python3 host/report/report.py --campaign runs/ci-campaign \
+            --out runs/ci-campaign/report.html --level complet \
+            --title "Relais — CI campaign"
+          test -s runs/ci-campaign/report.html
+          # le rapport doit être autonome : aucune ressource externe, aucun script
+          ! grep -q 'src="http\|href="http\|<script' runs/ci-campaign/report.html
+          echo "RAPPORT-OK $(wc -c < runs/ci-campaign/report.html) octets"
+
       - name: Contrôle syntaxique de la couche QNX (sans SDP)
         run: |
           if [ -f target/Makefile ]; then
