@@ -1,0 +1,74 @@
+[
+  {
+    "configuration": "emulateur, configuration ordinaire",
+    "binaire": null,
+    "boot_s": 8.4,
+    "accel": "kvm",
+    "loadavg_pendant": [
+      52.53,
+      26.45,
+      18.5
+    ],
+    "statut": 0,
+    "mesures": {
+      "uname": {
+        "sys": "QNX",
+        "rel": "8.0.0",
+        "ver": "2026/06/05-16:26:03EDT",
+        "machine": "x86pc",
+        "node": "relais-m46"
+      },
+      "gettime_us": {
+        "calls": "10000",
+        "min_us": "0.009",
+        "mean_us": "0.021",
+        "max_us": "0.558"
+      },
+      "sleep_overshoot_us": {
+        "calls": "200",
+        "min_us": "40.790",
+        "mean_us": "1370.830",
+        "max_us": "12506.550"
+      },
+      "done": {
+        "rc": "0"
+      }
+    }
+  },
+  {
+    "configuration": "emulateur, vCPU \u00e9pingl\u00e9s (10,11) + nice -19",
+    "binaire": "/tmp/qnxflow/qemu-rt",
+    "boot_s": 3.7,
+    "accel": "kvm",
+    "loadavg_pendant": [
+      47.96,
+      26.34,
+      18.55
+    ],
+    "statut": 0,
+    "mesures": {
+      "uname": {
+        "sys": "QNX",
+        "rel": "8.0.0",
+        "ver": "2026/06/05-16:26:03EDT",
+        "machine": "x86pc",
+        "node": "relais-m46"
+      },
+      "gettime_us": {
+        "calls": "10000",
+        "min_us": "0.010",
+        "mean_us": "0.020",
+        "max_us": "0.659"
+      },
+      "sleep_overshoot_us": {
+        "calls": "200",
+        "min_us": "56.964",
+        "mean_us": "1447.887",
+        "max_us": "12329.272"
+      },
+      "done": {
+        "rc": "0"
+      }
+    }
+  }
+]
