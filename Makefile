@@ -245,6 +245,22 @@ coverage:
 clean:
 	rm -rf $(BUILD)
 
+# --- k-induction (mission M44) ---
+# The induction engine reuses the world, the quotient projection and the
+# depth-first search of host/explore; only induction.c is new.
+$(BUILD)/relais-induction: host/explore/induction_main.c host/explore/induction.c \
+    host/explore/induction_report.c $(EXPLORE_LIB_SRC) $(LIB)
+	@mkdir -p $(dir $@)
+	$(CC) $(CFLAGS) $(CPPFLAGS) -Ihost/explore $< host/explore/induction.c \
+	  host/explore/induction_report.c $(EXPLORE_LIB_SRC) $(LIB) $(LDLIBS) -o $@
+
+$(BUILD)/test_induction: host/explore/test_induction.c core/tests/test_util.c \
+    host/explore/induction.c host/explore/induction_report.c $(EXPLORE_LIB_SRC) $(LIB)
+	@mkdir -p $(dir $@)
+	$(CC) $(CFLAGS) $(CPPFLAGS) -Ihost/explore $< core/tests/test_util.c \
+	  host/explore/induction.c host/explore/induction_report.c \
+	  $(EXPLORE_LIB_SRC) $(LIB) $(LDLIBS) -o $@
+
 # --- M36: bounded exhaustion of the C core, and the tooled half ---
 # The harness in host/modelcheck/ drives the REAL core functions over a
 # finite, published input space and checks the safety properties on every
@@ -429,7 +445,25 @@ M31_STUDY := host/study
      ports ports-zephyr ports-freertos ports-rust ports-compilers fuzz fuzz-long fuzz-report \
      demo-policy latency byzantine physics diversity diversity-variants diversity-compare \
      diversity-laws impair golden golden-verify golden-update wcet wcet-probe wcet-test wcet-isolate \
-     wcet-report wcet-portable fmeda
+     wcet-report wcet-portable fmeda induction
+
+# The induction engine, faced with the mutants: it must NEVER certify the
+# property of a defective core. The proof has to bite on the real core, not
+# only on the synthetic witnesses of test_induction.
+induction-mutant: mutants
+	@fail=0; for m in 1 2 3 4 5 6 7 8; do \
+	  $(CC) $(CFLAGS) $(CPPFLAGS) -Ihost/explore host/explore/induction_main.c \
+	    host/explore/induction.c host/explore/induction_report.c $(EXPLORE_LIB_SRC) \
+	    $(BUILD)/m$$m/librelais.a $(LDLIBS) -o $(BUILD)/m$$m/relais-induction || fail=1; \
+	  out=$$(./$(BUILD)/m$$m/relais-induction --k 10 --budget 50000 --classes 100000 \
+	    --faults 1 2>/dev/null); \
+	  case "$$out" in \
+	    *"PROVED for every depth"*) echo "M$$m: CERTIFIED (BUG!)"; fail=1;; \
+	    *) echo "M$$m: not certified";; esac; \
+	done; [ $$fail -eq 0 ] && echo "INDUCTION-MUTANT-OK" || \
+	  (echo "INDUCTION-MUTANT-ECHEC"; exit 1)
+
+.PHONY: induction-mutant
 fmeda:
 	python3 host/fmeda/fmeda.py --out docs/FMEDA.md --csv docs/FMEDA.csv
 	python3 -m unittest discover -s host/fmeda -p 'test_*.py'
@@ -453,7 +487,14 @@ latency: $(BUILD)/relais-actuator $(BUILD)/relais-node $(BUILD)/relais-latency
 	python3 $(LATENCY_CAMPAIGN) --out runs/latency
 
 all: $(CAN_TEST_BIN) $(UDP_CHECK_BIN) $(TRANSPORT_OBJ) $(BUILD)/test_latency $(BUILD)/relais-latency \
-     $(BUILD)/run_byzantine $(PHYSICS_BIN) $(BUILD)/relais-wcet-probe $(BUILD)/test_wcet_stats
+     $(BUILD)/run_byzantine $(PHYSICS_BIN) $(BUILD)/relais-wcet-probe $(BUILD)/test_wcet_stats \
+     $(BUILD)/relais-induction $(BUILD)/test_induction
+
+induction: $(BUILD)/relais-induction $(BUILD)/test_induction
+	@./$(BUILD)/test_induction
+	@./$(BUILD)/relais-induction --k 12 --budget 100000 --classes 60000 --faults 0
+	@./$(BUILD)/relais-induction --k 12 --budget 100000 --classes 100000 --faults 1
+	@./$(BUILD)/relais-induction --witness --k 8 --faults 1
 
 $(PHYSICS_BIN): $(PHYSICS_SRC) $(LIB)
 	@mkdir -p $(dir $@)
