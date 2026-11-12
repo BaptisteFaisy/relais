@@ -44,40 +44,29 @@ static int write_device(const char *path, const char *line) {
   return sent < 0 ? -1 : 0;
 }
 
-int main(int argc, char **argv) {
-  bool json = false;
-  const char *cmd = NULL;
-  for (int i = 1; i < argc; i++) {
-    if (!strcmp(argv[i], "--json")) json = true;
-    else if (cmd == NULL) cmd = argv[i];
-  }
-  if (cmd == NULL) {
-    usage();
-    return 2;
-  }
-
+/* "status" and "temoin": read the device and print what it says. */
+static int show_status(const char *cmd, bool json) {
   char buf[RELAIS_STATUS_LEN];
-  char line[96];
-  if (!strcmp(cmd, "status") || !strcmp(cmd, "temoin")) {
-    const char *path =
-        !strcmp(cmd, "status") ? RELAIS_DEV_STATUS : RELAIS_DEV_TEMOIN;
-    if (read_device(path, buf, sizeof buf) != 0) {
-      fprintf(stderr, "relaisctl: %s illisible (%s)\n", path, strerror(errno));
-      return 1;
-    }
-    if (json) {
-      /* One key, one value: enough for the bench, no parser dependency. */
-      buf[strcspn(buf, "\n")] = '\0';
-      printf("{\"device\":\"%s\",\"value\":\"%s\"}\n", cmd, buf);
-    } else {
-      fputs(buf, stdout);
-      if (buf[0] != '\0' && buf[strlen(buf) - 1] != '\n') putchar('\n');
-    }
-    return 0;
+  const char *path = !strcmp(cmd, "status") ? RELAIS_DEV_STATUS : RELAIS_DEV_TEMOIN;
+  if (read_device(path, buf, sizeof buf) != 0) {
+    fprintf(stderr, "relaisctl: %s illisible (%s)\n", path, strerror(errno));
+    return 1;
   }
+  if (json) {
+    /* One key, one value: enough for the bench, no parser dependency. */
+    buf[strcspn(buf, "\n")] = '\0';
+    printf("{\"device\":\"%s\",\"value\":\"%s\"}\n", cmd, buf);
+  } else {
+    fputs(buf, stdout);
+    if (buf[0] != '\0' && buf[strlen(buf) - 1] != '\n') putchar('\n');
+  }
+  return 0;
+}
 
-  /* Everything below writes one text line on /dev/relais/ctl; the grammar is
-   * the one qnx_util.c parses, so there is a single definition of it. */
+/* Everything else writes one text line on /dev/relais/ctl; the grammar is the
+ * one qnx_util.c parses, so there is a single definition of it. */
+static int send_command(const char *cmd, int argc, char **argv, bool json) {
+  char line[96];
   if (!strcmp(cmd, "handover"))
     snprintf(line, sizeof line, "handover\n");
   else if (!strcmp(cmd, "bias") && argc > 2)
@@ -102,4 +91,19 @@ int main(int argc, char **argv) {
   fprintf(stderr, "relaisctl: test commands are absent from a production image\n");
   return 1;
 #endif
+}
+
+int main(int argc, char **argv) {
+  bool json = false;
+  const char *cmd = NULL;
+  for (int i = 1; i < argc; i++) {
+    if (!strcmp(argv[i], "--json")) json = true;
+    else if (cmd == NULL) cmd = argv[i];
+  }
+  if (cmd == NULL) {
+    usage();
+    return 2;
+  }
+  if (!strcmp(cmd, "status") || !strcmp(cmd, "temoin")) return show_status(cmd, json);
+  return send_command(cmd, argc, argv, json);
 }

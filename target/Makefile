@@ -14,11 +14,13 @@ QCC      ?= qcc
 # declaration, while the stub build (STUBFLAGS below) already had it — which is
 # why CI never saw this. Found by compiling with the real SDP 8.0.
 QCCFLAGS ?= -V gcc_ntox86_64 -std=c11 -O2 -Wall -Wextra -Werror \
+            -Wshadow -Wconversion -Wno-sign-conversion \
             -D_POSIX_C_SOURCE=200809L
 CORE     := ../core
 CORE_SRC := $(wildcard $(CORE)/src/*.c)
-INCLUDES := -I$(CORE)/include -Iinclude
-LDFLAGS  ?= -lsocket -lm
+INCLUDES := -I$(CORE)/include -Iinclude -I../actuator
+# -lslog2 is the SDP library that holds slog2c(); it is not part of libc.
+LDFLAGS  ?= -lsocket -lm -lslog2
 
 BINS := relais-net relais-core relais-ctl relaisctl relais-actuator
 SRC_net       := net.c qnx_util.c
