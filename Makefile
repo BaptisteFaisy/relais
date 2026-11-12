@@ -429,7 +429,10 @@ M31_STUDY := host/study
      ports ports-zephyr ports-freertos ports-rust ports-compilers fuzz fuzz-long fuzz-report \
      demo-policy latency byzantine physics diversity diversity-variants diversity-compare \
      diversity-laws impair golden golden-verify golden-update wcet wcet-probe wcet-test wcet-isolate \
-     wcet-report wcet-portable
+     wcet-report wcet-portable fmeda
+fmeda:
+	python3 host/fmeda/fmeda.py --out docs/FMEDA.md --csv docs/FMEDA.csv
+	python3 -m unittest discover -s host/fmeda -p 'test_*.py'
 impair: $(BUILD)/relais-actuator $(BUILD)/relais-node $(BUILD)/relais-verify
 	python3 host/impair/run_impaired.py --out $(BUILD)/impair
 diversity: diversity-variants diversity-compare diversity-laws
