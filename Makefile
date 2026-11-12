@@ -23,7 +23,7 @@ TEST_FIXTURES := $(sort $(wildcard core/tests/fixtures_*.c))
 TEST_BIN := $(patsubst core/tests/%.c,$(BUILD)/%,$(TEST_SRC))
 # M19: the lifecycle/time fault world lives in host/faultlife and reuses the
 # same core; it is built like a unit test so `make test` runs it too.
-TEST_BIN += $(BUILD)/test_faultlife
+TEST_BIN += $(BUILD)/test_faultlife $(BUILD)/test_latency
 # host/explore holds the explorer (explore.c), the quotient abstraction
 # (symbolic.c), the counter-example reducer (shrink.c), the shared world
 # (world.c) and two test drivers. The library sources are linked into every
@@ -245,6 +245,17 @@ coverage:
 clean:
 	rm -rf $(BUILD)
 
+# --- M02: latency measurement (host/measure) — APPENDED, nothing above is
+# rewritten. Prerequisite lists are expanded when make reads them, so the new
+# binaries are hooked onto the existing targets by appended prerequisite lines;
+# the recipes below see the accumulated NODE_SRC / CPPFLAGS / TEST_BIN.
+LATENCY_SRC      := host/measure/latency.c host/measure/latency_json.c
+LATENCY_TEST_SRC := host/measure/test_latency.c
+LATENCY_TOOL_SRC := host/measure/relais-latency.c
+LATENCY_CAMPAIGN := host/measure/run_latency_campaign.py
+NODE_SRC  += $(LATENCY_SRC)
+CPPFLAGS  += -Ihost/measure
+
 # --- Portability and transports (mission M32) -------------------------------
 # APPENDED ONLY: nothing above is modified. The transport interface lives in
 # core/include/relais/transport.h, its implementations in host/transport/, and
@@ -276,9 +287,23 @@ M31_STUDY := host/study
 
 .PHONY: m31 m31-test m31-brake m31-infeasible m31-sensitivity m31-testament m31-dataset transports \
      ports ports-zephyr ports-freertos ports-rust ports-compilers fuzz fuzz-long fuzz-report \
-     demo-policy
+     demo-policy latency
+latency: $(BUILD)/relais-actuator $(BUILD)/relais-node $(BUILD)/relais-latency
+	python3 $(LATENCY_CAMPAIGN) --out runs/latency
 
-all: $(CAN_TEST_BIN) $(UDP_CHECK_BIN) $(TRANSPORT_OBJ)
+all: $(CAN_TEST_BIN) $(UDP_CHECK_BIN) $(TRANSPORT_OBJ) $(BUILD)/test_latency $(BUILD)/relais-latency
+test: $(BUILD)/test_latency
+$(BUILD)/relais-node: $(LATENCY_SRC)
+
+$(BUILD)/test_latency: $(LATENCY_TEST_SRC) $(LATENCY_SRC) core/tests/test_util.c $(LIB)
+	@mkdir -p $(dir $@)
+	$(CC) $(CFLAGS) $(CPPFLAGS) $(LATENCY_TEST_SRC) $(LATENCY_SRC) \
+	  core/tests/test_util.c $(LIB) $(LDLIBS) -o $@
+
+$(BUILD)/relais-latency: $(LATENCY_TOOL_SRC) $(LATENCY_SRC) $(LIB)
+	@mkdir -p $(dir $@)
+	$(CC) $(CFLAGS) $(CPPFLAGS) $(LATENCY_TOOL_SRC) $(LATENCY_SRC) $(LIB) \
+	  $(LDLIBS) -o $@
 
 $(BUILD)/transport/can_socketcan.o: host/transport/can_socketcan.c
 	@mkdir -p $(dir $@)
