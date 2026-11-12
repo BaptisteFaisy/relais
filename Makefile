@@ -41,6 +41,10 @@ SIMULATE_SRC := $(sort $(wildcard host/simulate/*.c))
 ACTUATOR_SRC := $(sort $(wildcard actuator/*.c actuator/pc/*.c))
 VERIFY_SRC := $(sort $(wildcard host/verify/*.c))
 NODE_SRC := $(sort $(wildcard host/node/*.c))
+# Fault injection (M18): bit flips, corruption, resource exhaustion, and the
+# campaign driver that measures them against the same sim world as the bench.
+FI_LIB_SRC := host/faultinject/bitflip.c host/faultinject/corrupt.c host/faultinject/resource.c
+FI_DRIVER := host/faultinject/campaign.c
 BRIDGE_SRC := host/difftest/bridge.c
 LIB := $(BUILD)/librelais.a
 
@@ -49,7 +53,8 @@ MUTANTS := 1 2 3 4 5 6 7 8
 .PHONY: all test explore simulate verify mutants report demo campaign clean size coverage \
      mutant-explore
 all: $(LIB) $(TEST_BIN) $(EXPLORE_BIN) $(BUILD)/relais-simulate $(BUILD)/relais-actuator \
-     $(BUILD)/relais-verify $(BUILD)/relais-node $(BUILD)/relais-bridge $(ALL_TEST_BIN)
+     $(BUILD)/relais-verify $(BUILD)/relais-node $(BUILD)/relais-bridge $(ALL_TEST_BIN) \
+     $(BUILD)/relais-faultinject
 
 $(LIB): $(CORE_OBJ)
 	@mkdir -p $(dir $@)
@@ -71,6 +76,13 @@ $(BUILD)/test_protocol $(BUILD)/test_law $(BUILD)/test_ota $(BUILD)/test_dissimi
 $(BUILD)/test_%: core/tests/test_%.c core/tests/test_util.c $(TEST_FIXTURES) $(LIB)
 	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS) $(CPPFLAGS) $< core/tests/test_util.c $(TEST_FIXTURES) $(LIB) $(LDLIBS) -o $@
+
+# test_faultinject links the fault-injection sources on top of the core lib.
+$(BUILD)/test_faultinject: core/tests/test_faultinject.c core/tests/test_util.c \
+    $(TEST_FIXTURES) $(FI_LIB_SRC) $(LIB)
+	@mkdir -p $(dir $@)
+	$(CC) $(CFLAGS) $(CPPFLAGS) -Ihost/faultinject $< core/tests/test_util.c \
+	  $(TEST_FIXTURES) $(FI_LIB_SRC) $(LIB) $(LDLIBS) -o $@
 
 # M19: lifecycle/time fault world. Explicit rule (wins over the pattern above)
 # because its sources live in host/faultlife, not core/tests.
@@ -107,6 +119,13 @@ $(BUILD)/relais-verify: $(VERIFY_SRC) $(LIB)
 $(BUILD)/relais-node: $(NODE_SRC) $(LIB)
 	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS) $(CPPFLAGS) $(NODE_SRC) $(LIB) $(LDLIBS) -o $@
+
+# The fault-injection campaign: drives the same sim world, injects bit flips,
+# and emits one JSON line per run that host/faultinject/campaign.py aggregates.
+$(BUILD)/relais-faultinject: $(FI_DRIVER) $(FI_LIB_SRC) $(SIM_SRC) $(LIB)
+	@mkdir -p $(dir $@)
+	$(CC) $(CFLAGS) $(CPPFLAGS) -Ihost/faultinject -Ihost/simulate $(FI_DRIVER) \
+	  $(FI_LIB_SRC) $(SIM_SRC) $(LIB) $(LDLIBS) -o $@
 
 # Differential-test bridge: exposes the C arbiter over JSON lines to arbiter_py.py.
 $(BUILD)/relais-bridge: $(BRIDGE_SRC) $(LIB)

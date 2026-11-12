@@ -144,13 +144,28 @@ Stated plainly, because annex 6 §3.4.3.2 asks for them:
    warning. After that, a stop is requested: the fallback holds the rack, it does
    not keep steering.
 5. **Timings are emulated.** Both guests share the PC's processor; killing QEMU
-   is not cutting a computer's power; the bench produces no fine hardware fault
-   (a flipped bit in memory). The 5 ms / 200 Hz figures are targets to be
+   is not cutting a computer's power. The 5 ms / 200 Hz figures are targets to be
    measured on the QNX target under KVM, published with their full distribution,
    and marked "emulated".
 6. **The threat model stops at frame authentication.** An attacker able to
    observe and inject on the actuator link in real time, with the key, is out of
    scope.
+7. **Fine hardware faults are simulated, not measured on silicon.** The bench
+   now injects bit, byte and word flips in a machine's memory, in the replicated
+   control state and in a frame in flight (`host/faultinject/`), and measures
+   them over 10 000 simulated runs: **0 violation of the safety invariants over
+   8 525 injections**, 1 208 of them detected by the system and 7 317 masked
+   (`docs/RESULTS.md` §4c). What is **not** covered: a real ECU with ECC, an
+   MPU, a scrubbed RAM, a radiation upset, a bit that stays flipped across a
+   reboot. The simulation flips a bit once, in a modelled state; the real
+   hardware has none of those protections modelled.
+8. **A corrupted state that is replicated is not detected, only bounded.** A bit
+   flip in the holder's control state is copied to the second by the state
+   replication (REP-01), so both machines compute the *same* wrong value and the
+   order/shadow comparison of DET-09 has nothing to disagree about. What holds
+   is the actuator's clamp (ACT-05) and the safe state; the measured deviation
+   stayed inside ±1.0 of full scale. Masking that class of fault needs a
+   dissimilar backup (DEG-08) or a third machine and a vote (REP-08).
 
 ## 8. ISO 26262 vocabulary mapped on Relais
 
