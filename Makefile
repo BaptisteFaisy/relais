@@ -3,13 +3,13 @@
 #
 # Budget: every CI job stays under 5 minutes (user rule).
 
-CC       ?= gcc
-AR       ?= ar
-BUILD    := build
-CFLAGS   ?= -std=c11 -O2 -g -Wall -Wextra -Werror -Wshadow -Wconversion \
-            -Wno-sign-conversion -fno-strict-aliasing
+CC ?= gcc
+AR ?= ar
+BUILD := build
+CFLAGS ?= -std=c11 -O2 -g -Wall -Wextra -Werror -Wshadow -Wconversion -Wno-sign-conversion \
+         -fno-strict-aliasing
 CPPFLAGS += -D_POSIX_C_SOURCE=200809L -Icore/include -Icore/tests -Iactuator -MMD -MP
-LDLIBS   += -lm
+LDLIBS += -lm
 
 # Coverage build: slowest machine code, instrumentation for gcov. Used only by
 # the `coverage` target (mission M14); `make all` stays -O2 and clang-free.
@@ -21,10 +21,19 @@ CORE_OBJ := $(patsubst core/src/%.c,$(BUILD)/core/%.o,$(CORE_SRC))
 TEST_SRC := $(filter-out core/tests/test_util.c,$(sort $(wildcard core/tests/test_*.c)))
 TEST_FIXTURES := $(sort $(wildcard core/tests/fixtures_*.c))
 TEST_BIN := $(patsubst core/tests/%.c,$(BUILD)/%,$(TEST_SRC))
-EXPLORE_SRC := $(sort $(wildcard host/explore/*.c))
+# host/explore holds the explorer (explore.c), the quotient abstraction
+# (symbolic.c), the counter-example reducer (shrink.c), the shared world
+# (world.c) and two test drivers. The library sources are linked into every
+# explore binary; the mains are kept apart so `make all` builds them all.
+EXPLORE_LIB_SRC := host/explore/world.c host/explore/symbolic.c host/explore/shrink.c \
+                   host/explore/search.c
+EXPLORE_SRC := host/explore/explore.c $(EXPLORE_LIB_SRC)
 # The explorer is only built once host/explore holds sources: until then the
 # proof of level 1 lives in the seeded simulator, and `make all` stays green.
 EXPLORE_BIN := $(if $(EXPLORE_SRC),$(BUILD)/relais-explore)
+EXPLORE_TEST_SRC := $(sort $(wildcard host/explore/test_*.c))
+EXPLORE_TEST_BIN := $(patsubst host/explore/%.c,$(BUILD)/%,$(EXPLORE_TEST_SRC))
+ALL_TEST_BIN := $(TEST_BIN) $(EXPLORE_TEST_BIN)
 SIMULATE_SRC := $(sort $(wildcard host/simulate/*.c))
 ACTUATOR_SRC := $(sort $(wildcard actuator/*.c actuator/pc/*.c))
 VERIFY_SRC := $(sort $(wildcard host/verify/*.c))
@@ -34,11 +43,10 @@ LIB := $(BUILD)/librelais.a
 
 MUTANTS := 1 2 3 4 5 6 7 8
 
-.PHONY: all test explore simulate verify mutants report demo campaign clean size \
-        coverage
-all: $(LIB) $(TEST_BIN) $(EXPLORE_BIN) $(BUILD)/relais-simulate \
-     $(BUILD)/relais-actuator $(BUILD)/relais-verify $(BUILD)/relais-node \
-     $(BUILD)/relais-bridge
+.PHONY: all test explore simulate verify mutants report demo campaign clean size coverage \
+     mutant-explore
+all: $(LIB) $(TEST_BIN) $(EXPLORE_BIN) $(BUILD)/relais-simulate $(BUILD)/relais-actuator \
+     $(BUILD)/relais-verify $(BUILD)/relais-node $(BUILD)/relais-bridge $(ALL_TEST_BIN)
 
 $(LIB): $(CORE_OBJ)
 	@mkdir -p $(dir $@)
@@ -52,7 +60,7 @@ $(BUILD)/core/%.o: core/src/%.c
 # pipeline instead of re-writing one (no duplication between test and bench).
 SIM_SRC := host/simulate/sim.c host/simulate/sim_faults.c
 $(BUILD)/test_protocol $(BUILD)/test_law $(BUILD)/test_ota $(BUILD)/test_dissimilar: $(BUILD)/test_%: \
-    core/tests/test_%.c core/tests/test_util.c $(SIM_SRC) $(LIB)
+     core/tests/test_%.c core/tests/test_util.c $(SIM_SRC) $(LIB)
 	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS) $(CPPFLAGS) -Ihost/simulate $< core/tests/test_util.c \
 	  $(SIM_SRC) $(LIB) $(LDLIBS) -o $@
@@ -64,6 +72,14 @@ $(BUILD)/test_%: core/tests/test_%.c core/tests/test_util.c $(TEST_FIXTURES) $(L
 $(BUILD)/relais-explore: $(EXPLORE_SRC) $(LIB)
 	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS) $(CPPFLAGS) $(EXPLORE_SRC) $(LIB) $(LDLIBS) -o $@
+
+# The two explore test drivers link the shared world/abstraction/reducer and the
+# common test harness (no duplicated check counting).
+$(BUILD)/test_symbolic $(BUILD)/test_shrink: $(BUILD)/test_%: \
+    host/explore/test_%.c core/tests/test_util.c $(EXPLORE_LIB_SRC) $(LIB)
+	@mkdir -p $(dir $@)
+	$(CC) $(CFLAGS) $(CPPFLAGS) -Ihost/explore $< core/tests/test_util.c \
+	  $(EXPLORE_LIB_SRC) $(LIB) $(LDLIBS) -o $@
 
 $(BUILD)/relais-simulate: $(SIMULATE_SRC) $(LIB)
 	@mkdir -p $(dir $@)
@@ -86,8 +102,8 @@ $(BUILD)/relais-bridge: $(BRIDGE_SRC) $(LIB)
 	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS) $(CPPFLAGS) $(BRIDGE_SRC) $(LIB) $(LDLIBS) -o $@
 
-test: $(TEST_BIN)
-	@fail=0; for b in $(TEST_BIN); do \
+test: $(TEST_BIN) $(ALL_TEST_BIN)
+	@fail=0; for b in $(ALL_TEST_BIN); do \
 	  printf '%-28s ' "$$(basename $$b)"; \
 	  if ./$$b > $(BUILD)/$$(basename $$b).log 2>&1; then \
 	    tail -1 $(BUILD)/$$(basename $$b).log; \
@@ -115,6 +131,20 @@ mutants: $(LIB)
 	  $(AR) rcs $(BUILD)/m$$m/librelais.a $(BUILD)/m$$m/*.o || exit 1; \
 	  echo "MUTANT-$$m built"; \
 	done
+
+# The quotient explorer and the reducer, faced with the mutants: each must still
+# catch the defect, and the reduced counter-example must be shorter than the raw
+# one. Reuses the mutant libraries built by `mutants` (no second core build).
+EXPLORE_MUTS := 3 4 6 8
+mutant-explore: mutants
+	@fail=0; for m in $(EXPLORE_MUTS); do \
+	  for t in test_symbolic test_shrink; do \
+	    $(CC) $(CFLAGS) $(CPPFLAGS) -Ihost/explore host/explore/$$t.c \
+	      core/tests/test_util.c $(EXPLORE_LIB_SRC) $(BUILD)/m$$m/librelais.a $(LDLIBS) \
+	      -o $(BUILD)/m$$m/$$t || fail=1; \
+	    ./$(BUILD)/m$$m/$$t || fail=1; \
+	  done; \
+	done; [ $$fail -eq 0 ] && echo "MUTANT-EXPLORE-OK" || (echo "MUTANT-EXPLORE-ECHEC"; exit 1)
 
 # One command, no root, no QNX SDP: the demonstration of spec 8 on a plain PC.
 demo: $(BUILD)/relais-actuator $(BUILD)/relais-node $(BUILD)/relais-verify

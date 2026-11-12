@@ -81,6 +81,7 @@ static void actuator_beat(explore_world *w) {
   meas.setpoint = relais_traj_setpoint(&w->traj, tick_seconds(w, w->tick + 1));
   relais_arb_out out;
   relais_arb_step(&w->arb, (relais_tick)w->tick, msgs, n, &meas, &out);
+  w->source = out.source;
   float dt = (float)relais_params_period_s(&w->params);
   relais_plant_step(&w->plant, out.value,
                     relais_traj_disturbance(&w->traj, tick_seconds(w, w->tick)), dt);
@@ -365,4 +366,21 @@ const char *explore_link_name(explore_link l) {
   static const char *names[EXPLORE_LINKS] = {"A->actuator", "B->actuator", "actuator->A",
                                              "actuator->B", "A->B", "B->A"};
   return l < EXPLORE_LINKS ? names[l] : "?";
+}
+
+/* One half-link, as the scenario format of CONTRACT.md names it. Shared by the
+ * explorer's counter-example dump and by the reducer's scenario writer, so the
+ * two never disagree on a link name (no duplication). */
+void explore_link_scenario(int link, const char **name, const char **direction) {
+  static const char *names[EXPLORE_LINKS] = {"A-actuator", "B-actuator", "A-actuator",
+                                             "B-actuator", "A-B", "A-B"};
+  static const char *dirs[EXPLORE_LINKS] = {"forward", "forward", "reverse",
+                                            "reverse", "forward", "reverse"};
+  if (link < 0 || link >= EXPLORE_LINKS) {
+    *name = "A-B";
+    *direction = "both";
+    return;
+  }
+  *name = names[link];
+  *direction = dirs[link];
 }
