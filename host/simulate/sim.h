@@ -7,7 +7,7 @@
 
 #include <stdbool.h>
 #include <stdint.h>
-#include <stdio.h>
+#include <stdio.h>   /* the callers of this header print their verdicts */
 
 #include "relais/arbiter.h"
 #include "relais/control.h"
@@ -96,10 +96,7 @@ void sim_deliver_outputs(sim_t *s, sim_node_t *from, sim_node_t *peer,
 uint64_t sim_rand(sim_t *s);
 bool sim_chance(sim_t *s, double probability);
 
-/* Journal helpers shared by the simulator and the campaign runner. */
-void sim_write_header(FILE *f, const sim_t *s, const char *scenario, uint32_t id);
-void sim_write_tick(FILE *f, const relais_arb_out *out, uint32_t tick, const relais_plant *pl,
-                    float setpoint);
-void sim_write_events(FILE *f, const relais_arb_out *out, uint32_t tick);
+/* The journal itself is written through actuator/journal_writer.h: the same
+ * chained writer for the simulator, the PC actuator and the QNX one (idea 34). */
 
 #endif /* RELAIS_SIM_H */

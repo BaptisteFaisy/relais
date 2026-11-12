@@ -211,3 +211,183 @@ bool relais_journal_parse_event(const char *line, relais_jr_event *r) {
   read_name(line, "text", r->text, sizeof r->text);
   return true;
 }
+
+/* ------------------------------------------------------- chained journal (34) */
+/* The chain key used when the caller gives none. It is a fixed, public value on
+ * purpose: anybody holding the journal can then verify it, which is what an
+ * offline verifier needs. A deployment that must also resist an attacker able to
+ * rewrite the file supplies a secret key instead (--chain-key on the simulator,
+ * the actuator and relais-verify); the fingerprint is then a MAC that cannot be
+ * recomputed without the secret. See docs/SECURITY.md, "Journal chain". */
+static const relais_key default_chain_key = {
+  { 0x52, 0x4c, 0x53, 0x63, 0x68, 0x61, 0x69, 0x6e, /* "RLSchain" */
+    0x30, 0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37  /* "01234567" */ },
+  true
+};
+
+#define CHAIN_LABEL "relais-chain-v1"
+
+static const relais_key *chain_key_of(const relais_key *key) {
+  return (key != NULL && key->enabled) ? key : &default_chain_key;
+}
+
+void relais_chain_genesis(relais_chain *c) {
+  if (c == NULL) return;
+  memset(c->bytes, 0, sizeof c->bytes);
+}
+
+/* chain(i) = SipHash-2-4(key, label || 0 || chain(i-1) || body(i)). The label
+ * keeps this derivation apart from every other use of the same key, and the
+ * previous fingerprint is hashed before the body, which is what makes a deleted
+ * or inserted record break every record that follows it. */
+void relais_chain_advance(relais_chain *c, const char *body, size_t len,
+                          const relais_key *key) {
+  if (c == NULL || body == NULL) return;
+  relais_siphash h;
+  relais_siphash_init(&h, chain_key_of(key));
+  relais_siphash_update(&h, CHAIN_LABEL, strlen(CHAIN_LABEL));
+  relais_siphash_update(&h, "", 1);
+  relais_siphash_update(&h, c->bytes, sizeof c->bytes);
+  relais_siphash_update(&h, body, len);
+  relais_put_u64le(c->bytes, relais_siphash_final(&h));
+}
+
+int relais_chain_to_hex(const relais_chain *c, char *out, size_t cap) {
+  if (c == NULL) return -1;
+  return relais_hex_encode(c->bytes, RELAIS_CHAIN_LEN, out, cap);
+}
+
+bool relais_chain_from_hex(relais_chain *c, const char *hex) {
+  return c != NULL && relais_hex_decode(hex, c->bytes, RELAIS_CHAIN_LEN);
+}
+
+bool relais_chain_equal(const relais_chain *a, const relais_chain *b) {
+  if (a == NULL || b == NULL) return false;
+  uint8_t diff = 0;
+  for (size_t i = 0; i < RELAIS_CHAIN_LEN; i++) diff |= (uint8_t)(a->bytes[i] ^ b->bytes[i]);
+  return diff == 0u;
+}
+
+/* The chain field is the last one of the record, so the last occurrence of its
+ * name is the one that counts: a scenario name or a reject text could otherwise
+ * carry the same characters and be mistaken for it. */
+static const char *chain_field_at(const char *line) {
+  const char *found = NULL;
+  for (const char *at = strstr(line, RELAIS_CHAIN_FIELD); at != NULL;
+       at = strstr(at + 1, RELAIS_CHAIN_FIELD))
+    found = at;
+  return found;
+}
+
+bool relais_chain_read(const char *line, relais_chain *out) {
+  if (line == NULL || out == NULL) return false;
+  const char *at = chain_field_at(line);
+  if (at == NULL) return false;
+  char hex[RELAIS_CHAIN_HEX + 1];
+  at += strlen(RELAIS_CHAIN_FIELD);
+  for (size_t i = 0; i < RELAIS_CHAIN_HEX; i++) {
+    if (at[i] == '\0') return false;
+    hex[i] = at[i];
+  }
+  hex[RELAIS_CHAIN_HEX] = '\0';
+  if (at[RELAIS_CHAIN_HEX] != '"') return false; /* the field must close there */
+  return relais_chain_from_hex(out, hex);
+}
+
+int relais_chain_body(const char *line, char *buf, size_t cap) {
+  if (line == NULL || buf == NULL) return -1;
+  const char *at = chain_field_at(line);
+  if (at == NULL) return -1;
+  /* The field is the last one: it is introduced by a comma and the object is
+   * closed right after the 16 digits. Anything else is a line we did not write,
+   * so it is refused rather than guessed at. */
+  if (at == line || at[-1] != ',') return -1;
+  const char *close = at + strlen(RELAIS_CHAIN_FIELD) + RELAIS_CHAIN_HEX;
+  if (close[0] != '"' || close[1] != '}') return -1;
+  size_t keep = (size_t)(at - line) - 1u; /* the body, without the comma */
+  if (cap < keep + 2u) return -1;
+  memcpy(buf, line, keep);
+  buf[keep] = '}';
+  buf[keep + 1u] = '\0';
+  return (int)(keep + 1u);
+}
+
+/* One body, one chained line: the shared shape of the three writers below. */
+static int chain_line(const char *body, relais_chain *chain, const relais_key *key,
+                      char *buf, size_t cap) {
+  if (body == NULL || chain == NULL || buf == NULL) return -1;
+  relais_chain_advance(chain, body, strlen(body), key);
+  char hex[RELAIS_CHAIN_HEX + 1];
+  if (relais_chain_to_hex(chain, hex, sizeof hex) != (int)RELAIS_CHAIN_HEX) return -1;
+  size_t len = strlen(body);
+  if (len < 2u || body[len - 1u] != '}') return -1;
+  int n = snprintf(buf, cap, "%.*s,%s%s\"}", (int)(len - 1u), body, RELAIS_CHAIN_FIELD, hex);
+  return (n > 0 && (size_t)n < cap) ? n : -1;
+}
+
+int relais_journal_chain_header(const relais_jr_header *h, relais_chain *chain,
+                                const relais_key *key, char *buf, size_t cap) {
+  char body[RELAIS_JOURNAL_LINE_MAX];
+  if (relais_journal_format_header(h, body, sizeof body) <= 0) return -1;
+  return chain_line(body, chain, key, buf, cap);
+}
+
+int relais_journal_chain_tick(const relais_jr_tick *r, relais_chain *chain,
+                              const relais_key *key, char *buf, size_t cap) {
+  char body[RELAIS_JOURNAL_LINE_MAX];
+  if (relais_journal_format_tick(r, body, sizeof body) <= 0) return -1;
+  return chain_line(body, chain, key, buf, cap);
+}
+
+int relais_journal_chain_event(const relais_jr_event *r, relais_chain *chain,
+                               const relais_key *key, char *buf, size_t cap) {
+  char body[RELAIS_JOURNAL_LINE_MAX];
+  if (relais_journal_format_event(r, body, sizeof body) <= 0) return -1;
+  return chain_line(body, chain, key, buf, cap);
+}
+
+void relais_chain_reader_init(relais_chain_reader *r) {
+  if (r == NULL) return;
+  memset(r, 0, sizeof *r);
+  relais_chain_genesis(&r->expected);
+}
+
+relais_chain_status relais_chain_reader_step(relais_chain_reader *r, const char *line,
+                                             const relais_key *key, char *why,
+                                             size_t why_cap) {
+  if (r == NULL || line == NULL) return RELAIS_CHAIN_BREAK;
+  if (line[strspn(line, " \t\r\n")] == '\0') return RELAIS_CHAIN_ABSENT; /* not a record */
+  r->records++;
+  relais_chain got;
+  if (!relais_chain_read(line, &got)) {
+    r->absent++;
+    if (why != NULL && why_cap > 0 && r->started)
+      snprintf(why, why_cap, "record %zu carries no chain field", r->records);
+    /* Before the chain starts this is an older journal, which stays readable.
+     * After it started, a record without a fingerprint is a record that was
+     * rewritten or inserted: the chain is broken. */
+    return r->started ? RELAIS_CHAIN_BREAK : RELAIS_CHAIN_ABSENT;
+  }
+  char body[RELAIS_JOURNAL_CHAIN_LINE_MAX];
+  const int body_len = relais_chain_body(line, body, sizeof body);
+  if (body_len < 0) {
+    if (why != NULL && why_cap > 0)
+      snprintf(why, why_cap, "record %zu has a malformed chain field", r->records);
+    return RELAIS_CHAIN_BREAK;
+  }
+  relais_chain want = r->expected;
+  relais_chain_advance(&want, body, (size_t)body_len, key);
+  if (!relais_chain_equal(&want, &got)) {
+    if (why != NULL && why_cap > 0) {
+      char a[RELAIS_CHAIN_HEX + 1], b[RELAIS_CHAIN_HEX + 1];
+      relais_chain_to_hex(&want, a, sizeof a);
+      relais_chain_to_hex(&got, b, sizeof b);
+      snprintf(why, why_cap, "record %zu: chain expects %s, found %s", r->records, a, b);
+    }
+    return RELAIS_CHAIN_BREAK;
+  }
+  r->expected = got;
+  r->chained++;
+  r->started = true;
+  return RELAIS_CHAIN_OK;
+}

@@ -33,13 +33,42 @@ One JSON object per line, ASCII, no trailing comma, floats with `%.6g`.
 
 ```
 {"kind":"header","version":1,"mutant":0,"scenario":"slalom-death-A","scenario_id":1,
- "params":{"T":5,"p":1,"N":8,"certify":3,"bail":4,"eps":0.005,"delta":0.02,"degraded":6000}}
+ "params":{"T":5,"p":1,"N":8,"certify":3,"bail":4,"eps":0.005,"delta":0.02,"degraded":6000},
+ "chain":"1da9e2d749c44f1c"}
 {"kind":"tick","tick":41,"ns":0,"mandate":7,"holder":"A","source":"holder","value":0.125,
  "pos":0.4,"vel":0.01,"setpoint":0.5,"misses":0,"lamp":"off","cause":"none",
- "certified":true,"certified_node":"B","stop":false}
+ "certified":true,"certified_node":"B","stop":false,"chain":"e6463b7efd919f9a"}
 {"kind":"event","tick":42,"ns":0,"event":"mandate_granted","node":"B","mandate":8,
- "detail":0,"text":"demande"}
+ "detail":0,"text":"demande","chain":"cd469cfd2cb2090b"}
 ```
+
+### The `chain` field (idea 34)
+
+Every record a current build writes carries `"chain"` as its **last** key: 16
+lower-case hexadecimal digits, the fingerprint of the record chained to the one
+before it. It is computed in `core/src/journal.c`, in the pure core, so the
+actuator that writes it and `relais-verify` that recomputes it cannot drift:
+
+```
+chain(0)   = 0000000000000000                       (genesis, before the header)
+chain(i)   = SipHash-2-4(K, "relais-chain-v1" || 0 || chain(i-1) || body(i))
+```
+
+`body(i)` is the record exactly as formatted **without** the `,"chain":"..."`
+suffix, newline excluded; the 8 bytes of the digest are written little-endian and
+printed in order. `K` is the chain key: the built-in public key
+`524c53636861696e3031323334353637` unless the writer was given one
+(`--chain-key <32 hex>` on `relais-simulate`, `relais-actuator` and
+`relais-verify`). Records are chained in file order, the header included, and the
+events of a tick are chained before its record, like everything else.
+
+A reader **must** treat `chain` as optional: a journal written before this field
+exists has none and stays readable, and a reader that does not know the field
+ignores it. `relais-verify --check-chain` recomputes the chain and names the
+first break; a record that carries no fingerprint *after* one that did is a
+break. The writers also print a `chain anchor` — the fingerprint of the last
+record — which is the only way to notice a tail cut off the file, so it belongs
+in whatever seals the run.
 
 Names on the wire of the journal: `holder`/`node`/`certified_node` are `""`,
 `"A"`, `"B"`, `"C"`, `"actuator"`; `source` is `none|holder|shadow|testament|fallback`;

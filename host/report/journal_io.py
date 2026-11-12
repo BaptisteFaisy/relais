@@ -32,6 +32,7 @@ class Header:
     scenario: str = ""
     scenario_id: int = 0
     params: Dict[str, float] = field(default_factory=lambda: dict(DEFAULT_PARAMS))
+    chain: str = ""  # chained fingerprint of the record ("" in older journals)
 
 
 @dataclass
@@ -52,6 +53,7 @@ class Tick:
     certified: bool = False
     certified_node: str = ""
     stop: bool = False
+    chain: str = ""
 
 
 @dataclass
@@ -64,6 +66,7 @@ class Event:
     mandate: int = 0
     detail: int = 0
     text: str = ""
+    chain: str = ""
 
 
 @dataclass
@@ -75,6 +78,7 @@ class Journal:
     events: List[Event] = field(default_factory=list)
     malformed: int = 0
     malformed_samples: List[str] = field(default_factory=list)
+    chained: int = 0  # records carrying a fingerprint: 0 in an older journal
 
 
 def _num(d: Dict, key: str, default: float = 0.0) -> float:
@@ -97,7 +101,8 @@ def _parse_header(d: Dict) -> Header:
                 pass
     return Header(version=int(_num(d, "version", 1)), mutant=int(_num(d, "mutant", 0)),
                   scenario=str(d.get("scenario", "")),
-                  scenario_id=int(_num(d, "scenario_id", 0)), params=params)
+                  scenario_id=int(_num(d, "scenario_id", 0)), params=params,
+                  chain=str(d.get("chain", "")))
 
 
 def _parse_tick(d: Dict) -> Tick:
@@ -112,7 +117,7 @@ def _parse_tick(d: Dict) -> Tick:
                 cause=str(d.get("cause", "none")),
                 certified=bool(d.get("certified", False)),
                 certified_node=str(d.get("certified_node", "")),
-                stop=bool(d.get("stop", False)))
+                stop=bool(d.get("stop", False)), chain=str(d.get("chain", "")))
 
 
 def _parse_event(d: Dict) -> Event:
@@ -121,7 +126,8 @@ def _parse_event(d: Dict) -> Event:
         raise ValueError("event without a name")
     return Event(tick=int(_num(d, "tick")), ns=int(_num(d, "ns")), event=name,
                  node=str(d.get("node", "")), mandate=int(_num(d, "mandate")),
-                 detail=int(_num(d, "detail", 0)), text=str(d.get("text", "")))
+                 detail=int(_num(d, "detail", 0)), text=str(d.get("text", "")),
+                 chain=str(d.get("chain", "")))
 
 
 def read_journal(path: str) -> Journal:
@@ -149,6 +155,13 @@ def _feed_line(j: Journal, line: str) -> None:
         if not isinstance(d, dict):
             raise ValueError("not a JSON object")
         kind = d.get("kind")
+        # The chained fingerprint (CONTRACT.md, "Journal format") is carried
+        # along but never required: a journal without it is an older one and
+        # stays readable. The authority on the chain is relais-verify
+        # --check-chain, which recomputes it in C from the same core.
+        chain = str(d.get("chain", ""))
+        if chain:
+            j.chained += 1
         if kind == "header":
             j.header = _parse_header(d)
         elif kind == "tick":

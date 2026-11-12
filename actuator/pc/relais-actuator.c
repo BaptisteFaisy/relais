@@ -40,6 +40,8 @@ typedef struct {
   peer_t peers[MAX_PEERS];
   int sock;
   FILE *journal;
+  relais_jw jw;      /* the chained journal writer (idea 34) */
+  relais_key chain_key;
   uint32_t ticks;
   bool realtime;
   const char *state_path;
@@ -176,8 +178,8 @@ static void run(config_t *cfg, relais_arb *arb, relais_plant *plant) {
     meas.applied = out.value;
     out.statut.meas = meas;
 
-    relais_jw_write_events(cfg->journal, &out, (relais_tick)tick);
-    relais_jw_write_tick(cfg->journal, &out, (relais_tick)tick, plant, meas.setpoint);
+    relais_jw_write_events(&cfg->jw, &out, (relais_tick)tick);
+    relais_jw_write_tick(&cfg->jw, &out, (relais_tick)tick, plant, meas.setpoint);
     publish_statut(cfg->sock, cfg->peers, &out.statut, &cfg->key);
 
     if (!cfg->realtime) continue;
@@ -209,46 +211,60 @@ static void save_state(const config_t *cfg, const relais_arb *arb) {
   fclose(f);
 }
 
+/* Everything the command line decides, in one place, so main stays short. */
+static bool parse_options(int argc, char **argv, config_t *cfg, int *port) {
+  char why[128] = "";
+  for (int i = 1; i < argc; i++) {
+    const char *a = argv[i];
+    if (strcmp(a, "--port") == 0 && i + 1 < argc) *port = atoi(argv[++i]);
+    else if (strcmp(a, "--peer") == 0 && i + 1 < argc) {
+      relais_node who = RELAIS_NODE_NONE;
+      peer_t p;
+      if (!parse_peer(argv[++i], &p, &who)) return false;
+      cfg->peers[who == RELAIS_NODE_A ? 0 : 1] = p;
+    } else if (strcmp(a, "--ticks") == 0 && i + 1 < argc)
+      cfg->ticks = (uint32_t)atoi(argv[++i]);
+    else if (strcmp(a, "--params") == 0 && i + 1 < argc) {
+      if (!relais_params_parse(&cfg->params, argv[++i], why, sizeof why)) {
+        fprintf(stderr, "parametres invalides: %s\n", why);
+        return false;
+      }
+    } else if (strcmp(a, "--trajectory") == 0 && i + 1 < argc) {
+      if (!relais_traj_parse(&cfg->traj, argv[++i], why, sizeof why)) {
+        fprintf(stderr, "trajectoire invalide: %s\n", why);
+        return false;
+      }
+    } else if (strcmp(a, "--key") == 0 && i + 1 < argc) {
+      if (!relais_key_from_hex(&cfg->key, argv[++i])) return false;
+    } else if (strcmp(a, "--chain-key") == 0 && i + 1 < argc) {
+      if (!relais_key_from_hex(&cfg->chain_key, argv[++i])) return false;
+    } else if (strcmp(a, "--journal") == 0 && i + 1 < argc) {
+      cfg->journal = fopen(argv[++i], "w");
+      if (cfg->journal == NULL) {
+        fprintf(stderr, "journal illisible\n");
+        return false;
+      }
+    } else if (strcmp(a, "--state") == 0 && i + 1 < argc) cfg->state_path = argv[++i];
+    else if (strcmp(a, "--no-realtime") == 0) cfg->realtime = false;
+    else return false;
+  }
+  return *port > 0 && cfg->journal != NULL;
+}
+
 int main(int argc, char **argv) {
   config_t cfg;
   memset(&cfg, 0, sizeof cfg);
   relais_params_default(&cfg.params);
   relais_traj_default(&cfg.traj);
   relais_key_clear(&cfg.key);
+  relais_key_clear(&cfg.chain_key);
   cfg.ticks = 4000;
   cfg.realtime = true;
   int port = 0;
-  char why[128] = "";
-
-  for (int i = 1; i < argc; i++) {
-    const char *a = argv[i];
-    if (strcmp(a, "--port") == 0 && i + 1 < argc) port = atoi(argv[++i]);
-    else if (strcmp(a, "--peer") == 0 && i + 1 < argc) {
-      relais_node who = RELAIS_NODE_NONE;
-      peer_t p;
-      if (!parse_peer(argv[++i], &p, &who)) { usage(); return 2; }
-      cfg.peers[who == RELAIS_NODE_A ? 0 : 1] = p;
-    } else if (strcmp(a, "--ticks") == 0 && i + 1 < argc) cfg.ticks = (uint32_t)atoi(argv[++i]);
-    else if (strcmp(a, "--params") == 0 && i + 1 < argc) {
-      if (!relais_params_parse(&cfg.params, argv[++i], why, sizeof why)) {
-        fprintf(stderr, "parametres invalides: %s\n", why);
-        return 2;
-      }
-    } else if (strcmp(a, "--trajectory") == 0 && i + 1 < argc) {
-      if (!relais_traj_parse(&cfg.traj, argv[++i], why, sizeof why)) {
-        fprintf(stderr, "trajectoire invalide: %s\n", why);
-        return 2;
-      }
-    } else if (strcmp(a, "--key") == 0 && i + 1 < argc) {
-      if (!relais_key_from_hex(&cfg.key, argv[++i])) { usage(); return 2; }
-    } else if (strcmp(a, "--journal") == 0 && i + 1 < argc) {
-      cfg.journal = fopen(argv[++i], "w");
-      if (cfg.journal == NULL) { fprintf(stderr, "journal illisible\n"); return 2; }
-    } else if (strcmp(a, "--state") == 0 && i + 1 < argc) cfg.state_path = argv[++i];
-    else if (strcmp(a, "--no-realtime") == 0) cfg.realtime = false;
-    else { usage(); return 2; }
+  if (!parse_options(argc, argv, &cfg, &port)) {
+    usage();
+    return 2;
   }
-  if (port <= 0 || cfg.journal == NULL) { usage(); return 2; }
 
   cfg.sock = open_socket(port);
   if (cfg.sock < 0) {
@@ -261,11 +277,15 @@ int main(int argc, char **argv) {
   load_state(&cfg, &arb);
   relais_plant plant;
   relais_plant_init(&plant, 0.0f, cfg.traj.seed);
-  relais_jw_write_header(cfg.journal, &cfg.params, relais_mutant_name(), cfg.traj.seed);
+  relais_jw_open(&cfg.jw, cfg.journal, &cfg.chain_key);
+  relais_jw_write_header(&cfg.jw, &cfg.params, relais_mutant_name(), cfg.traj.seed);
 
   run(&cfg, &arb, &plant);
 
   save_state(&cfg, &arb);
+  char anchor[RELAIS_CHAIN_HEX + 1];
+  if (relais_jw_anchor(&cfg.jw, anchor, sizeof anchor) > 0)
+    printf("actuator: journal chain anchor %s (%zu records)\n", anchor, cfg.jw.records);
   fflush(cfg.journal);
   fclose(cfg.journal);
   close(cfg.sock);
