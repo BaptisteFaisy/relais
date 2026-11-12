@@ -18,6 +18,7 @@ void relais_params_default(relais_params *p) {
   p->bail_ticks = 4;
   p->request_burst = 4;
   p->request_window = 4;
+  p->auth_strikes = 0; /* M20/DEG-09: off by default, behaviour unchanged */
   p->epsilon = 0.005f;  /* 0.5 % of full scale */
   p->delta = 0.02f;     /* 2 % of full scale */
   p->dissimilar_epsilon = 0.0f; /* DEG-08: off = identical backup, unchanged */
@@ -72,6 +73,9 @@ bool relais_params_valid(const relais_params *p, char *why, size_t why_len) {
     return bad(p, "slew hors borne", why, why_len);
   if (p->request_burst < 1 || p->request_window < 1)
     return bad(p, "limitation de debit invalide", why, why_len);
+  /* M20/DEG-09: the strike limit is a small number; 0 disables the mechanism. */
+  if (p->auth_strikes > 32)
+    return bad(p, "auth_strikes > 32", why, why_len);
   if (p->slow_factor < 1 || p->slow_factor > 1000)
     return bad(p, "facteur de ralenti hors de 1..1000", why, why_len);
   if (why != NULL && why_len > 0) why[0] = '\0';
@@ -100,6 +104,7 @@ static bool apply_kv(relais_params *p, const char *k, const char *v) {
   if (strcmp(k, "N") == 0) { p->testament_len = (uint8_t)u; return true; }
   if (strcmp(k, "certify") == 0) { p->certify_ticks = (uint8_t)u; return true; }
   if (strcmp(k, "bail") == 0) { p->bail_ticks = (uint8_t)u; return true; }
+  if (strcmp(k, "strikes") == 0) { p->auth_strikes = (uint8_t)u; return true; }
   if (strcmp(k, "eps") == 0) { p->epsilon = (float)d; return true; }
   if (strcmp(k, "delta") == 0) { p->delta = (float)d; return true; }
   if (strcmp(k, "deps") == 0) { p->dissimilar_epsilon = (float)d; return true; }

@@ -245,6 +245,11 @@ coverage:
 clean:
 	rm -rf $(BUILD)
 
+# --- M20: byzantine frame injector and attack bench (host/byzantine) ---
+# Append-only block: the unit test core/tests/test_byzantine.c is already picked
+# up by the TEST_BIN wildcard above, so only the standalone bench is added here.
+BYZ_SRC := host/byzantine/inject.c host/byzantine/run_byzantine.c
+
 # --- M02: latency measurement (host/measure) — APPENDED, nothing above is
 # rewritten. Prerequisite lists are expanded when make reads them, so the new
 # binaries are hooked onto the existing targets by appended prerequisite lines;
@@ -287,11 +292,18 @@ M31_STUDY := host/study
 
 .PHONY: m31 m31-test m31-brake m31-infeasible m31-sensitivity m31-testament m31-dataset transports \
      ports ports-zephyr ports-freertos ports-rust ports-compilers fuzz fuzz-long fuzz-report \
-     demo-policy latency
+     demo-policy latency byzantine
+byzantine: $(BUILD)/run_byzantine
+	./$(BUILD)/run_byzantine
 latency: $(BUILD)/relais-actuator $(BUILD)/relais-node $(BUILD)/relais-latency
 	python3 $(LATENCY_CAMPAIGN) --out runs/latency
 
-all: $(CAN_TEST_BIN) $(UDP_CHECK_BIN) $(TRANSPORT_OBJ) $(BUILD)/test_latency $(BUILD)/relais-latency
+all: $(CAN_TEST_BIN) $(UDP_CHECK_BIN) $(TRANSPORT_OBJ) $(BUILD)/test_latency $(BUILD)/relais-latency \
+     $(BUILD)/run_byzantine
+
+$(BUILD)/run_byzantine: $(BYZ_SRC) host/byzantine/inject.h $(LIB)
+	@mkdir -p $(dir $@)
+	$(CC) $(CFLAGS) $(CPPFLAGS) -Ihost/byzantine $(BYZ_SRC) $(LIB) $(LDLIBS) -o $@
 test: $(BUILD)/test_latency
 $(BUILD)/relais-node: $(LATENCY_SRC)
 

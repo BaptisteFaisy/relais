@@ -26,7 +26,7 @@
 #define RELAIS_OUT_MSG_MAX    4u   /* frames emitted by one node step */
 #define RELAIS_FULL_SCALE     1.0f /* command full scale, in normalised units */
 #define RELAIS_TICK_NONE      UINT64_MAX
-#define RELAIS_REJECT_SLOTS   10u
+#define RELAIS_REJECT_SLOTS   12u
 
 typedef uint64_t relais_tick;    /* tick number, given by the actuator */
 typedef uint32_t relais_mandate; /* mandate number, handed out by the actuator */
@@ -95,7 +95,10 @@ typedef enum {
   RELAIS_REJ_MALFORMED = 6,
   RELAIS_REJ_RATE_LIMITED = 7,
   RELAIS_REJ_NOT_CERTIFIED = 8,
-  RELAIS_REJ_VERSION = 9
+  RELAIS_REJ_VERSION = 9,
+  RELAIS_REJ_REVOKED = 10,     /* M20: the sender is on the revocation list */
+  RELAIS_REJ_AUTH_BANNED = 11  /* M20: the sender failed the authenticator too
+                                  many times in a row (DEG-09) */
 } relais_reject;
 
 /* Journal events, spec 6.4. */
@@ -115,7 +118,9 @@ typedef enum {
   RELAIS_EV_LAMP_CHANGE = 12,
   RELAIS_EV_STOP_REQUESTED = 13,
   RELAIS_EV_FORGED = 14,
-  RELAIS_EV_NODE_BACK = 15
+  RELAIS_EV_NODE_BACK = 15,
+  RELAIS_EV_NODE_REVOKED = 16, /* M20: a node was put on the revocation list */
+  RELAIS_EV_AUTH_BANNED = 17   /* M20: a node was banned after auth strikes */
 } relais_event_kind;
 
 typedef struct {

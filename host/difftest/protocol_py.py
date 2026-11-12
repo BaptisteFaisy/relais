@@ -34,6 +34,8 @@ REJ_NOT_HOLDER = 1
 REJ_MANDATE_STALE = 2
 REJ_MANDATE_FUTURE = 3
 REJ_TICK_MISSED = 4
+REJ_REVOKED = 10       # M20: sender on the revocation list
+REJ_AUTH_BANNED = 11   # M20: sender banned after authenticator strikes
 
 # ---- journal events (relais_event_kind) ----
 EV_MANDATE_GRANTED = 1
@@ -51,12 +53,14 @@ EV_LAMP_CHANGE = 12
 EV_STOP_REQUESTED = 13
 EV_FORGED = 14
 EV_NODE_BACK = 15
+EV_NODE_REVOKED = 16   # M20
+EV_AUTH_BANNED = 17    # M20
 
 # ---- structural limits (types.h) ----
 TESTAMENT_MAX = 8
 EVENTS_MAX = 8
 IN_MSG_MAX = 8
-REJECT_SLOTS = 10
+REJECT_SLOTS = 12
 LIVENESS_TICKS = 8
 TICK_NONE = (1 << 64) - 1
 

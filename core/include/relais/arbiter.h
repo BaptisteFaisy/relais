@@ -71,6 +71,17 @@ typedef struct {
   uint16_t request_window_tick;
   uint8_t request_seen;
 
+  /* M20: the guard on the input. A revoked node (policy decision) and a node
+   * banned by the authenticator (DEG-09) see every one of their frames
+   * rejected and counted, before any protocol rule is applied. Both masks
+   * travel in the snapshot, so they survive a restart of the actuator
+   * (MAN-11). Bit i stands for relais_node i; only computers are ever set. */
+  uint8_t revoked_mask;
+  uint8_t banned_mask;
+  uint8_t auth_strike[5]; /* consecutive authenticator failures, by node */
+  uint8_t revoke_pending; /* revocations not yet journaled */
+  uint8_t ban_pending;    /* bans not yet journaled */
+
   /* Counters, published by STATUT and the journal. */
   uint32_t rejected[RELAIS_REJECT_SLOTS];
   uint32_t forged;
@@ -113,5 +124,24 @@ bool relais_arb_restore(relais_arb *a, const uint8_t *buf, size_t len);
 bool relais_arb_vacant(const relais_arb *a);
 void relais_arb_force_link(relais_arb *a, relais_node n, bool heard);
 uint32_t relais_arb_rejected_total(const relais_arb *a);
+
+/* M20: revocation list (idea 39). A revoked node sees every one of its frames
+ * rejected and counted (RELAIS_REJ_REVOKED); the revocation is journaled at the
+ * next tick and survives a restart through the snapshot (MAN-11). The list is
+ * empty by default, so the behaviour of the protocol is unchanged. There is no
+ * un-revoke: clearing a revocation is an operator act, done by restoring a
+ * snapshot taken before it. */
+void relais_arb_revoke(relais_arb *a, relais_node n);
+bool relais_arb_is_revoked(const relais_arb *a, relais_node n);
+
+/* M20: safe degraded mode on the authenticator (idea 38, DEG-09). The transport
+ * reports every authenticator failure; after params.auth_strikes consecutive
+ * failures for the same sender, that sender is banned and the event is
+ * journaled. A success clears the streak. auth_strikes == 0 (the default)
+ * disables the mechanism entirely. The ban is sticky: it survives a restart and
+ * is only lifted by a fresh actuator start. */
+bool relais_arb_auth_fail(relais_arb *a, relais_node n); /* true when it trips */
+void relais_arb_auth_ok(relais_arb *a, relais_node n);
+bool relais_arb_is_banned(const relais_arb *a, relais_node n);
 
 #endif /* RELAIS_ARBITER_H */

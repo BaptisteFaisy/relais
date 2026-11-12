@@ -38,6 +38,8 @@ const char *relais_reject_name(relais_reject r) {
     case RELAIS_REJ_RATE_LIMITED: return "rate_limited";
     case RELAIS_REJ_NOT_CERTIFIED: return "not_certified";
     case RELAIS_REJ_VERSION: return "version";
+    case RELAIS_REJ_REVOKED: return "revoked";
+    case RELAIS_REJ_AUTH_BANNED: return "auth_banned";
   }
   return "inconnu";
 }
@@ -60,6 +62,8 @@ const char *relais_event_name(relais_event_kind k) {
     case RELAIS_EV_STOP_REQUESTED: return "stop_requested";
     case RELAIS_EV_FORGED: return "forged";
     case RELAIS_EV_NODE_BACK: return "node_back";
+    case RELAIS_EV_NODE_REVOKED: return "node_revoked";
+    case RELAIS_EV_AUTH_BANNED: return "auth_banned";
   }
   return "none";
 }
