@@ -21,6 +21,9 @@ CORE_OBJ := $(patsubst core/src/%.c,$(BUILD)/core/%.o,$(CORE_SRC))
 TEST_SRC := $(filter-out core/tests/test_util.c,$(sort $(wildcard core/tests/test_*.c)))
 TEST_FIXTURES := $(sort $(wildcard core/tests/fixtures_*.c))
 TEST_BIN := $(patsubst core/tests/%.c,$(BUILD)/%,$(TEST_SRC))
+# M19: the lifecycle/time fault world lives in host/faultlife and reuses the
+# same core; it is built like a unit test so `make test` runs it too.
+TEST_BIN += $(BUILD)/test_faultlife
 # host/explore holds the explorer (explore.c), the quotient abstraction
 # (symbolic.c), the counter-example reducer (shrink.c), the shared world
 # (world.c) and two test drivers. The library sources are linked into every
@@ -68,6 +71,14 @@ $(BUILD)/test_protocol $(BUILD)/test_law $(BUILD)/test_ota $(BUILD)/test_dissimi
 $(BUILD)/test_%: core/tests/test_%.c core/tests/test_util.c $(TEST_FIXTURES) $(LIB)
 	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS) $(CPPFLAGS) $< core/tests/test_util.c $(TEST_FIXTURES) $(LIB) $(LDLIBS) -o $@
+
+# M19: lifecycle/time fault world. Explicit rule (wins over the pattern above)
+# because its sources live in host/faultlife, not core/tests.
+$(BUILD)/test_faultlife: host/faultlife/test_faultlife.c host/faultlife/faultlife.c \
+    core/tests/test_util.c $(LIB)
+	@mkdir -p $(dir $@)
+	$(CC) $(CFLAGS) $(CPPFLAGS) host/faultlife/test_faultlife.c host/faultlife/faultlife.c \
+	  core/tests/test_util.c $(LIB) $(LDLIBS) -o $@
 
 $(BUILD)/relais-explore: $(EXPLORE_SRC) $(LIB)
 	@mkdir -p $(dir $@)
