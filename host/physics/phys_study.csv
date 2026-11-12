@@ -1,0 +1,13 @@
+trajectory,config,enabled,max_err,rms_err,max_pos,mean_kinetic_energy
+default,published,0,0.014163,0.010001,0.600411,0.004443
+default,friction,1,0.016416,0.011935,0.599320,0.004442
+default,play,1,0.014179,0.010032,0.601614,0.004487
+default,current,1,0.014185,0.010001,0.600437,0.004445
+default,stiffness,1,0.014294,0.010082,0.597614,0.004401
+default,all,1,0.033146,0.012021,0.600012,0.004115
+kind=step amp=0.6 t_start=1.0,published,0,0.000005,0.000002,0.632121,0.001206
+kind=step amp=0.6 t_start=1.0,friction,1,0.001089,0.001060,0.619116,0.000988
+kind=step amp=0.6 t_start=1.0,play,1,0.023366,0.017422,0.649336,0.006197
+kind=step amp=0.6 t_start=1.0,current,1,0.000004,0.000002,0.688187,0.001300
+kind=step amp=0.6 t_start=1.0,stiffness,1,0.002829,0.001953,0.621291,0.001140
+kind=step amp=0.6 t_start=1.0,all,1,0.000464,0.000349,0.618133,0.001029

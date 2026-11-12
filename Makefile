@@ -245,6 +245,14 @@ coverage:
 clean:
 	rm -rf $(BUILD)
 
+# --- Mission M30: the faithful rack model, the observer, the adaptive law ---
+# APPEND-ONLY block: nothing above this line was modified, so the thirteen
+# missions that integrate one after another do not conflict here. The new
+# files in core/src/ and core/tests/ are picked up by the wildcards of CORE_SRC
+# and TEST_SRC above; only the host bench needs a rule of its own.
+PHYSICS_SRC := $(sort $(wildcard host/physics/*.c))
+PHYSICS_BIN := $(BUILD)/relais-physics
+
 # --- M21: keys, anti-replay and the chained journal (SEC-07, ideas 31-34) ---
 # Appended at the end and never edited above: thirteen missions integrate one
 # after another, so an existing line is never rewritten here.
@@ -305,14 +313,20 @@ M31_STUDY := host/study
 
 .PHONY: m31 m31-test m31-brake m31-infeasible m31-sensitivity m31-testament m31-dataset transports \
      ports ports-zephyr ports-freertos ports-rust ports-compilers fuzz fuzz-long fuzz-report \
-     demo-policy latency byzantine
+     demo-policy latency byzantine physics
+physics: $(PHYSICS_BIN)
+	python3 host/physics/epsilon_study.py
 byzantine: $(BUILD)/run_byzantine
 	./$(BUILD)/run_byzantine
 latency: $(BUILD)/relais-actuator $(BUILD)/relais-node $(BUILD)/relais-latency
 	python3 $(LATENCY_CAMPAIGN) --out runs/latency
 
 all: $(CAN_TEST_BIN) $(UDP_CHECK_BIN) $(TRANSPORT_OBJ) $(BUILD)/test_latency $(BUILD)/relais-latency \
-     $(BUILD)/run_byzantine
+     $(BUILD)/run_byzantine $(PHYSICS_BIN)
+
+$(PHYSICS_BIN): $(PHYSICS_SRC) $(LIB)
+	@mkdir -p $(dir $@)
+	$(CC) $(CFLAGS) $(CPPFLAGS) $(PHYSICS_SRC) $(LIB) $(LDLIBS) -o $@
 
 $(BUILD)/run_byzantine: $(BYZ_SRC) host/byzantine/inject.h $(LIB)
 	@mkdir -p $(dir $@)
