@@ -83,7 +83,7 @@ static relais_cause cause_of(const char *name) {
 }
 
 static relais_event_kind event_of(const char *name) {
-  for (int k = RELAIS_EV_NONE; k <= RELAIS_EV_NODE_BACK; k++)
+  for (int k = RELAIS_EV_NONE; k <= RELAIS_EV_AUTH_BANNED; k++)
     if (strcmp(relais_event_name((relais_event_kind)k), name) == 0)
       return (relais_event_kind)k;
   return RELAIS_EV_NONE;

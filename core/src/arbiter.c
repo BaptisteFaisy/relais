@@ -17,13 +17,15 @@
  */
 #include "relais/arbiter.h"
 
+#include "guard.h"
 #include "relais/control.h"
 
 #include <math.h>
 #include <string.h>
 
 #define SNAPSHOT_MAGIC 0x52415242u /* "RARB" */
-#define SNAPSHOT_VERSION 1u
+#define SNAPSHOT_VERSION 2u /* v2 (M20) adds the two guard masks; v1 still reads */
+#define SNAPSHOT_LEN 18u    /* v1 was 16 bytes; the masks are the two last ones */
 #define LIVENESS_TICKS 8u
 
 typedef struct {
@@ -49,6 +51,13 @@ static void reject(relais_arb *a, relais_arb_out *out, relais_tick tick, relais_
                    const relais_msg *m) {
   if ((size_t)why < RELAIS_REJECT_SLOTS) a->rejected[why]++;
   push_event(out, RELAIS_EV_ORDER_REJECTED, m->sender, m->mandate, tick, (uint32_t)why);
+}
+
+/* M20: thin bridge so the guard (core/src/guard.c) can journal its own
+ * decisions without duplicating the event push. The flush lives in guard.c. */
+void relais__arb_push_event(relais_arb_out *out, relais_event_kind kind, relais_node node,
+                            relais_mandate mandate, relais_tick tick, uint32_t detail) {
+  push_event(out, kind, node, mandate, tick, detail);
 }
 
 /* MAN-02: an order counts only if it comes from the holder, carries the current
@@ -87,6 +96,14 @@ static void scan(relais_arb *a, relais_arb_out *out, relais_tick tick, const rel
   memset(s, 0, sizeof *s);
   for (size_t i = 0; i < n; i++) {
     const relais_msg *m = &msgs[i];
+    /* M20: the guard runs first. A revoked or banned sender is dropped, counted
+     * and journaled before any protocol rule, and its frame does not even
+     * refresh the liveness of the node: a node under sanction is not "heard". */
+    relais_reject blocked = relais__guard_block(a, m->sender);
+    if (blocked != RELAIS_REJ_NONE) {
+      reject(a, out, tick, blocked, m);
+      continue;
+    }
     if (relais_node_is_computer(m->sender)) a->last_heard[m->sender] = tick;
     switch (m->type) {
       case RELAIS_MSG_ORDRE: {
@@ -402,6 +419,8 @@ void relais_arb_step(relais_arb *a, relais_tick tick, const relais_msg *msgs, si
     meas = &local;
   }
   a->ticks++;
+  /* M20: publish the guard decisions taken since the previous tick. */
+  relais__guard_flush(a, out, tick);
   /* REL-06: a cession recorded at the previous tick frees the mandate here, so
    * the order already received for that tick was applied under a known holder
    * and the new one can be granted in the same tick. */
@@ -471,7 +490,7 @@ void relais_arb_step(relais_arb *a, relais_tick tick, const relais_msg *msgs, si
 }
 
 size_t relais_arb_snapshot(const relais_arb *a, uint8_t *buf, size_t cap) {
-  const size_t need = 16;
+  const size_t need = SNAPSHOT_LEN;
   if (a == NULL || buf == NULL || cap < need) return 0;
   memset(buf, 0, need);
   buf[0] = (uint8_t)(SNAPSHOT_MAGIC & 0xffu);
@@ -486,6 +505,10 @@ size_t relais_arb_snapshot(const relais_arb *a, uint8_t *buf, size_t cap) {
     buf[8 + (size_t)i] = (uint8_t)((a->mandate >> (i * 8)) & 0xffu);
   for (int i = 0; i < 4; i++)
     buf[12 + (size_t)i] = (uint8_t)((a->handovers >> (i * 8)) & 0xffu);
+  /* M20: the guard state travels with the mandate, so a revocation and a ban
+   * both survive a restart of the actuator (MAN-11). */
+  buf[16] = a->revoked_mask;
+  buf[17] = a->banned_mask;
   return need;
 }
 
@@ -493,7 +516,9 @@ bool relais_arb_restore(relais_arb *a, const uint8_t *buf, size_t len) {
   if (a == NULL || buf == NULL || len < 16) return false;
   uint32_t magic = (uint32_t)buf[0] | ((uint32_t)buf[1] << 8) | ((uint32_t)buf[2] << 16) |
                    ((uint32_t)buf[3] << 24);
-  if (magic != SNAPSHOT_MAGIC || buf[4] != SNAPSHOT_VERSION) return false;
+  /* A version-1 snapshot (16 bytes, no guard state) is still accepted: the
+   * mandate number it carries is what MAN-11 is about. */
+  if (magic != SNAPSHOT_MAGIC || (buf[4] != 1u && buf[4] != SNAPSHOT_VERSION)) return false;
   /* MAN-11: the mandate number survives a restart. Mutant M6 loses it. */
   relais_mandate kept = (relais_mandate)buf[8] | ((relais_mandate)buf[9] << 8) |
                         ((relais_mandate)buf[10] << 16) | ((relais_mandate)buf[11] << 24);
@@ -501,6 +526,10 @@ bool relais_arb_restore(relais_arb *a, const uint8_t *buf, size_t len) {
   a->holder = RELAIS_MUT(RELAIS_M6_MANDATE_RESET) ? RELAIS_NODE_NONE : (relais_node)buf[5];
   a->certified = buf[6] != 0 && !RELAIS_MUT(RELAIS_M6_MANDATE_RESET);
   a->certified_node = a->certified ? (relais_node)buf[7] : RELAIS_NODE_NONE;
+  if (buf[4] >= 2u && len >= SNAPSHOT_LEN) {
+    a->revoked_mask = buf[16];
+    a->banned_mask = buf[17];
+  }
   return true;
 }
 

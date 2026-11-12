@@ -12,6 +12,9 @@ typedef struct {
   uint8_t bail_ticks;      /* STATUT silence after which a node deposes itself */
   uint8_t request_burst;   /* SEC-06: demandes accepted per window */
   uint16_t request_window; /* ticks in that window */
+  uint8_t auth_strikes;    /* M20/DEG-09: consecutive authenticator failures
+                              after which a sender is banned; 0 = disabled, so
+                              the default behaviour is unchanged. Recommended 3. */
   float epsilon;           /* order/shadow agreement tolerance, full-scale fraction */
   float delta;             /* continuity tolerance at handover, full-scale fraction */
   float dissimilar_epsilon;/* DEG-08: widened order/shadow band for a dissimilar
