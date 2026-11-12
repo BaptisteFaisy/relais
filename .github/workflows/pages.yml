@@ -42,6 +42,16 @@ jobs:
             echo "pas encore de captures de VM dans cet arbre"
           fi
 
+      - name: Catalogue des features, généré depuis l'arbre
+        run: |
+          python3 site/test_build_features.py
+          python3 site/build_features.py --repo-root . --site-dir _site
+          # La page publiée doit vraiment contenir le catalogue : une carte au
+          # minimum, sinon le déploiement échoue au lieu de publier une page vide.
+          n=$(grep -c 'class="feature"' _site/index.html)
+          echo "$n feature card(s) in the published page"
+          [ "$n" -ge 20 ]
+
       - name: Rapport de campagne régénéré
         run: |
           make -j"$(nproc)" build/relais-simulate
