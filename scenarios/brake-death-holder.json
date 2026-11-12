@@ -1,0 +1,25 @@
+{
+  "params": {
+    "T": 5,
+    "p": 1,
+    "N": 8
+  },
+  "ticks": 2000,
+  "trajectory": {
+    "kind": "brake",
+    "amp": 1.0,
+    "offset": 0.4,
+    "t_start": 2.0
+  },
+  "id": 13,
+  "name": "brake-death-holder",
+  "seed": 1013,
+  "faults": [
+    {
+      "at_tick": 500,
+      "type": "death",
+      "target": "A"
+    }
+  ],
+  "note": "Ideas 61/71, CMD-08 + REL-01/REL-05: the holder dies IN THE MIDDLE of the braking ramp (tick 500, 0.45 s before the ramp ends). The question the study answers: is the braking interrupted by the handover? At level C the certified second substitutes (REL-05); at level S the will of the last order covers the handover (ACT-02) and B is granted within three periods (REL-01). Measure the deviation to the deceleration setpoint against the twin."
+}

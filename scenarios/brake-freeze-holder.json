@@ -1,0 +1,26 @@
+{
+  "params": {
+    "T": 5,
+    "p": 1,
+    "N": 8
+  },
+  "ticks": 2000,
+  "trajectory": {
+    "kind": "brake",
+    "amp": 1.0,
+    "offset": 0.4,
+    "t_start": 2.0
+  },
+  "id": 14,
+  "name": "brake-freeze-holder",
+  "seed": 1014,
+  "faults": [
+    {
+      "at_tick": 500,
+      "type": "freeze",
+      "target": "A",
+      "ticks": 40
+    }
+  ],
+  "note": "Ideas 61/71, CMD-08 + F2: the holder freezes for 200 ms (40 ticks) in the middle of the braking ramp, then wakes up. While it is frozen the actuator revokes on its own evidence (MAN-04) and the handover happens; on wake-up A stands down when it reads the STATUT (MAN-08, REL-07) and its stale orders are dropped (ACT-09). The study measures whether the braking ramp survives the freeze-and-return cycle."
+}
