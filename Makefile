@@ -245,6 +245,23 @@ coverage:
 clean:
 	rm -rf $(BUILD)
 
+# --- HIL: real process cuts, real link cut, physical relay adapter (M41) ---
+# The HIL bench plays REAL faults on REAL processes of this machine: the
+# holder is killed (SIGKILL) or frozen (SIGSTOP/SIGCONT) by the kernel, and
+# the data path is severed by killing the relay that carries it. The relay
+# adapter drives a physical relay (GPIO on a Pi, or a USB relay board); its
+# hardware modes are BLOCKED(no relay hardware) here and its loopback mode
+# runs. Requirements: INJ-02, INJ-03, INJ-04, INJ-08, ROB-05.
+HIL_SRC := host/hil/relay_adapter.c host/hil/relay_main.c
+
+$(BUILD)/relais-relay: $(HIL_SRC) host/hil/relay_adapter.h
+	@mkdir -p $(dir $@)
+	$(CC) $(CFLAGS) $(CPPFLAGS) -Ihost/hil $(HIL_SRC) -o $@
+
+$(BUILD)/verify-hil: host/hil/verify_hil.c $(LIB)
+	@mkdir -p $(dir $@)
+	$(CC) $(CFLAGS) $(CPPFLAGS) $< $(LIB) $(LDLIBS) -o $@
+
 # --- Soak (mission M42) ---
 # The long soak: a continuous campaign with an anomaly hunter. The duration is
 # a parameter, so one target serves the short smoke test of the verification
@@ -482,7 +499,24 @@ M31_STUDY := host/study
      ports ports-zephyr ports-freertos ports-rust ports-compilers fuzz fuzz-long fuzz-report \
      demo-policy latency byzantine physics diversity diversity-variants diversity-compare \
      diversity-laws impair golden golden-verify golden-update wcet wcet-probe wcet-test wcet-isolate \
-     wcet-report wcet-portable fmeda induction baseline compare soak soak-long
+     wcet-report wcet-portable fmeda induction baseline compare soak soak-long hil hil-relay \
+     hil-linkcut hil-processcut
+hil-relay: $(BUILD)/relais-relay
+	@mkdir -p build/hil
+	./$(BUILD)/relais-relay --backend loopback --state build/hil/relay.state --selftest
+	@rc=0; ./$(BUILD)/relais-relay --backend gpio --channel 17 --selftest || rc=$$?; \
+	  if [ $$rc -ne 3 ]; then echo "gpio backend: expected BLOCKED(3), got $$rc"; exit 1; fi
+	@rc=0; ./$(BUILD)/relais-relay --backend usb --device /dev/ttyUSB0 --selftest || rc=$$?; \
+	  if [ $$rc -ne 3 ]; then echo "usb backend: expected BLOCKED(3), got $$rc"; exit 1; fi
+
+hil-linkcut: all $(BUILD)/verify-hil
+	bash host/hil/linkcut.sh
+
+hil-processcut: all $(BUILD)/verify-hil
+	python3 host/hil/processcut.py --cuts 100 --out build/hil/processcut.json
+
+hil: hil-relay hil-linkcut hil-processcut
+	@echo "HIL-OK"
 soak: $(BUILD)/relais-simulate $(BUILD)/relais-verify
 	python3 host/soak/test_soak.py
 	python3 host/soak/soak.py --minutes $(SOAK_MINUTES) --ticks $(SOAK_TICKS) \
