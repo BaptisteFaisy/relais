@@ -264,6 +264,7 @@ Targets per level and acceptance criteria:
 - [docs/SAFETY.md](docs/SAFETY.md) — safety document modelled on Annex 6 §3.4.3.2
 - [CONTRACT.md](CONTRACT.md) — frozen contract for contributors
 - [docs/spec-fr.md](docs/spec-fr.md) — original French specification
+- [docs/MUTATION-SCORE.md](docs/MUTATION-SCORE.md) — mutation score of the core: are the tests strong, measured
 
 ## Repository automation
 
@@ -276,7 +277,12 @@ tests), `ci-budget` (every CI job must render its verdict within **5 minutes**
 forbidden patterns). A `pr-auto-merge` sweeper rebases ready PRs, and a
 conflict-resolution agent (`.github/fireworks/conflict_agent.py`) resolves
 rebase conflicts automatically; red tests are triaged by the `triage-rouge`
-workflow.
+workflow. A **nightly** workflow (`.github/workflows/nightly.yml`) replays the
+full published scale of `docs/RESULTS.md` — 10 M-state exploration, one billion
+ticks, the swept campaigns, the 8/8 mutant bench, and the **mutation score** of
+the core ([docs/MUTATION-SCORE.md](docs/MUTATION-SCORE.md)) — sliced into jobs
+that each stay under the five-minute budget, and posts a dated report to a
+pinned issue (red night → its own issue, never silent).
 
 ## Licence
 

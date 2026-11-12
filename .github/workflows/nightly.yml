@@ -1,0 +1,295 @@
+name: nightly
+
+# Relais — the big published numbers of docs/RESULTS.md, replayed automatically
+# every night and dated (idea 10). The pull-request CI keeps a five-minute
+# sample; this workflow replays the FULL scale. It is a `schedule` job, not a
+# PR gate, but the user rule still applies: every job declares
+# `timeout-minutes: 5` and the work is SLICED across jobs rather than stretched.
+#
+# Why an issue comment and not a `results/` branch: the report job only needs
+# `issues: write`, never `contents: write`, so `main` stays protected and no
+# commit pollutes the history every night. The thread is dated and searchable;
+# a red night opens its own issue so nothing is ever silent.
+#
+# Schedule: GitHub Actions cron is UTC only. 02:17 UTC is 03:17 Europe/Paris in
+# winter (CET) and 04:17 in summer (CEST) — one run per night, in the small
+# hours, whichever way DST falls. The report prints the Paris date.
+
+on:
+  schedule:
+    - cron: '17 2 * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: nightly-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  actions: read
+  issues: write
+
+env:
+  RELAIS_BIN: ./build
+
+jobs:
+  unit:
+    name: unit (build + 5651 checks)
+    runs-on: [self-hosted, linux, x64, relais-worker]
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+          clean: false
+      - run: git clean -ffdx
+      - run: make -j"$(nproc)" all
+      - run: python3 host/nightly/nightly_probe.py unit
+      - uses: actions/upload-artifact@v4
+        with:
+          name: unit
+          path: results/unit.json
+
+  explore:
+    name: explore (100k/1 fault + 10M/2 faults)
+    runs-on: [self-hosted, linux, x64, relais-worker]
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+          clean: false
+      - run: git clean -ffdx
+      - run: make -j"$(nproc)" all
+      - run: python3 host/nightly/nightly_probe.py explore
+      - uses: actions/upload-artifact@v4
+        with:
+          name: explore
+          path: results/explore.json
+
+  billion:
+    name: one billion ticks (shard ${{ matrix.shard }})
+    runs-on: [self-hosted, linux, x64, relais-worker]
+    timeout-minutes: 5
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix:
+        shard: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+          clean: false
+      - run: git clean -ffdx
+      - run: make -j"$(nproc)" all
+      # 20 shards x 50 000 000 ticks = 1 000 000 000, level C, distinct seeds.
+      - run: >-
+          python3 host/nightly/nightly_probe.py sim
+          --ticks 50000000 --seed $((1000 + ${{ matrix.shard }})) --level
+      - uses: actions/upload-artifact@v4
+        with:
+          name: billion-${{ matrix.shard }}
+          path: results/sim-*.json
+
+  soak:
+    name: twelve hours under 1% loss (both levels)
+    runs-on: [self-hosted, linux, x64, relais-worker]
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+          clean: false
+      - run: git clean -ffdx
+      - run: make -j"$(nproc)" all
+      - run: python3 host/nightly/nightly_probe.py soak
+      - uses: actions/upload-artifact@v4
+        with:
+          name: soak
+          path: results/soak.json
+
+  campaign-death:
+    name: swept deaths (shard ${{ matrix.shard }})
+    runs-on: [self-hosted, linux, x64, relais-worker]
+    timeout-minutes: 5
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2, 3]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+          clean: false
+      - run: git clean -ffdx
+      - run: make -j"$(nproc)" all
+      # 1986 instants x 2 roles x level C = 3972 runs, sliced in four.
+      - run: >-
+          python3 host/nightly/nightly_probe.py campaign --kind death
+          --sweep-from 100 --sweep-step 7 --sweep-count 1986
+          --shard ${{ matrix.shard }} --shards 4
+      - uses: actions/upload-artifact@v4
+        with:
+          name: campaign-death-${{ matrix.shard }}
+          path: results/campaign-death-*.json
+
+  campaign-freeze:
+    name: swept freezes (shard ${{ matrix.shard }})
+    runs-on: [self-hosted, linux, x64, relais-worker]
+    timeout-minutes: 5
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2, 3]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+          clean: false
+      - run: git clean -ffdx
+      - run: make -j"$(nproc)" all
+      # 2500 durations (1..1597 ticks) x 2 roles x 2 levels = 10000 runs.
+      - run: >-
+          python3 host/nightly/nightly_probe.py campaign --kind freeze
+          --durations 2500 --shard ${{ matrix.shard }} --shards 4
+      - uses: actions/upload-artifact@v4
+        with:
+          name: campaign-freeze-${{ matrix.shard }}
+          path: results/campaign-freeze-*.json
+
+  campaign-cut:
+    name: swept link cuts (shard ${{ matrix.shard }})
+    runs-on: [self-hosted, linux, x64, relais-worker]
+    timeout-minutes: 5
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2, 3]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+          clean: false
+      - run: git clean -ffdx
+      - run: make -j"$(nproc)" all
+      # 6 half-links x 420 instants x 2 levels = 5040 runs.
+      - run: >-
+          python3 host/nightly/nightly_probe.py campaign --kind cut
+          --sweep-count 420 --shard ${{ matrix.shard }} --shards 4
+      - uses: actions/upload-artifact@v4
+        with:
+          name: campaign-cut-${{ matrix.shard }}
+          path: results/campaign-cut-*.json
+
+  mutants:
+    name: mutant bench (8/8, spec 7.6)
+    runs-on: [self-hosted, linux, x64, relais-worker]
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+          clean: false
+      - run: git clean -ffdx
+      - run: make -j"$(nproc)" all
+      - run: python3 host/nightly/nightly_probe.py mutants
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mutants
+          path: results/mutants.json
+
+  mutation-score:
+    name: mutation score of the core (idea 10)
+    runs-on: [self-hosted, linux, x64, relais-worker]
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+          clean: false
+      - run: git clean -ffdx
+      - run: make -j"$(nproc)" all
+      - run: >-
+          python3 host/nightly/nightly_probe.py mutation-score
+          --max-mutants 60 --time-budget 200 --jobs 3
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mutation-score
+          path: results/mutation-score*.json
+
+  report:
+    name: assemble + publish
+    runs-on: [self-hosted, linux, x64, relais-worker]
+    timeout-minutes: 5
+    needs: [unit, explore, billion, soak, campaign-death, campaign-freeze,
+            campaign-cut, mutants, mutation-score]
+    if: always()
+    env:
+      GH_TOKEN: ${{ github.token }}
+      REPO: ${{ github.repository }}
+      RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+          clean: false
+      - run: git clean -ffdx
+      - uses: actions/download-artifact@v4
+        with:
+          path: results
+      - name: Assemble the report
+        run: >-
+          python3 host/nightly/report.py --results-dir results
+          --out results/report.md --run-url "$RUN_URL" --repo "$REPO"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nightly-report
+          path: results/report.md
+      - name: Read the verdict
+        id: verdict
+        env:
+          NEEDS: ${{ toJSON(needs) }}
+        run: |
+          state=PASS
+          grep -qx FAIL results/verdict && state=FAIL
+          # a job that died before writing its artifact must still turn the
+          # night red: never silent (idea 10).
+          bad=$(python3 -c 'import json,os; d=json.loads(os.environ["NEEDS"]); print(",".join(k for k,v in d.items() if v.get("result")!="success"))')
+          [ -n "$bad" ] && state=FAIL
+          echo "state=$state" >> "$GITHUB_OUTPUT"
+          echo "verdict=$state failed_jobs=[$bad]"
+      - name: Find or create the pinned results issue
+        id: issue
+        run: |
+          export PATH="$HOME/bin:/usr/local/bin:/usr/bin:$PATH"
+          n=$(gh api "repos/$REPO/issues?labels=nightly-results&state=all&per_page=1" \
+              --jq '.[0].number' 2>/dev/null || true)
+          if [ -z "${n:-}" ]; then
+            n=$(gh api -X POST "repos/$REPO/issues" \
+                -f title="Relais — nightly replay results" \
+                -f body="Dated replay of the published scale (docs/RESULTS.md). Posted automatically by the nightly workflow; one comment per night." \
+                -f 'labels[]=nightly-results' --jq .number)
+          fi
+          echo "number=$n" >> "$GITHUB_OUTPUT"
+      - name: Comment the report on the pinned issue
+        run: |
+          export PATH="$HOME/bin:/usr/local/bin:/usr/bin:$PATH"
+          gh issue comment "${{ steps.issue.outputs.number }}" --body-file results/report.md
+      - name: Open an issue when the night is red
+        if: steps.verdict.outputs.state == 'FAIL'
+        run: |
+          export PATH="$HOME/bin:/usr/local/bin:/usr/bin:$PATH"
+          gh issue create --title "[nightly RED] $(date -u +%F) — invariant violation" \
+            --body-file results/report.md || true
+          exit 1

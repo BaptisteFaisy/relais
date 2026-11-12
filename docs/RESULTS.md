@@ -139,6 +139,38 @@ decisions (M3, M8 fall almost immediately), and the seeded campaign is
 indispensable for everything that needs an adversarial frame or a long double
 fault (M1, M2, M4). Neither replaces the other.
 
+## 5b. Mutation score of the core (idea 10)
+
+The eight mutants above are hand-written **design** defects. To answer "are the
+tests strong?" against **implementation** faults, `host/mutants/mutation_score.py`
+injects mechanical mutations (comparison flips, off-by-one bounds, `&&`/`||`,
+constant ±1, unary sign) into every line of `core/src/*.c`, rebuilds each in a
+temporary tree, and judges it with `make test` plus reduced simulator and
+explorer scenarios. Full method, operators, and limits:
+[docs/MUTATION-SCORE.md](MUTATION-SCORE.md).
+
+Measured on this PC (12-core x86-64) on **2026-11-11** with
+`python3 host/mutants/mutation_score.py --max-mutants 40 --time-budget 240`:
+
+| Mutants | Killed | Survived | Equivalent (suspected) | Invalid (no build) | Score |
+|---|---|---|---|---|---|
+| 40 | 13 | 0 | 22 | 5 | **100.0 %** (conservative 37.1 %) |
+
+Read it honestly: the **score** (`killed / (killed + survived)`) excludes the 22
+mutants that are byte-identical on every oracle — genuine no-ops such as a
+`memset` whose fields are all reassigned, an unreached buffer guard, or a CRC
+table size the code never reads past. The **conservative** score counts every
+suspected equivalent as a miss (37.1 %); a pass/fail oracle cannot *prove*
+equivalence, so the truth sits between the two and the 22 suspects are the
+margin of doubt. Five mutants did not even compile: `-Werror=nonnull` and
+`-Werror=array-bounds` reject a flipped null guard before `memset`, so the strict
+build flags are themselves a mutation-killing oracle.
+
+The **nightly** workflow (`.github/workflows/nightly.yml`, job `mutation-score`)
+re-runs this at a larger budget every night and re-dates the number here; the
+last nightly run's date and verdict are posted to the pinned `nightly-results`
+issue.
+
 ## 6. Unit and protocol tests
 
 `make test` — seven binaries, **5630 checks**, all green:
