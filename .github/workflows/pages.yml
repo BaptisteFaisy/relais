@@ -41,6 +41,11 @@ jobs:
           else
             echo "pas encore de captures de VM dans cet arbre"
           fi
+          if [ -d docs/figures/qnx-guest ]; then
+            mkdir -p _site/figures/qnx-guest
+            cp docs/figures/qnx-guest/* _site/figures/qnx-guest/
+            ls -l _site/figures/qnx-guest
+          fi
 
       - name: Catalogue des features, généré depuis l'arbre
         run: |
