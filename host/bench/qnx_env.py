@@ -144,21 +144,33 @@ def find_sdp(search_roots=(), environ=None) -> Optional[str]:
     return _env_sdp(env) or _glob_sdp(search_roots)
 
 
-def _host_bin(sdp: str) -> Optional[str]:
-    """The host tools directory (holds qcc and mkqnximage), if present."""
+def _host_bins(sdp: str) -> list:
+    """Every host tool directory of the SDP, in lookup order.
+
+    SDP 8.0 splits the host tools: qcc, mkifs and qlicense live in
+    host/linux/x86_64/usr/bin, while mkqnximage lives in host/common/bin.
+    Probing only the first one reports a missing mkqnximage on a complete
+    install -- measured against a real SDP 8.0.0 installation.
+    """
+    dirs = []
     direct = os.path.join(sdp, HOST_BIN)
     if os.path.isdir(direct):
-        return direct
-    globbed = sorted(glob.glob(os.path.join(sdp, "host", "*", "*", "usr", "bin")))
-    return globbed[0] if globbed else None
+        dirs.append(direct)
+    for pattern in (os.path.join(sdp, "host", "*", "*", "usr", "bin"),
+                    os.path.join(sdp, "host", "*", "bin")):
+        for found in sorted(glob.glob(pattern)):
+            if os.path.isdir(found) and found not in dirs:
+                dirs.append(found)
+    return dirs
 
 
-def _tool(tools_dir: Optional[str], name: str) -> Optional[str]:
-    """Executable path of `name` inside the SDP host tools, or None."""
-    if not tools_dir:
-        return None
-    candidate = os.path.join(tools_dir, name)
-    return candidate if os.access(candidate, os.X_OK) else None
+def _tool(tools_dirs, name: str) -> Optional[str]:
+    """Executable path of `name` in the first SDP host directory holding it."""
+    for tools_dir in tools_dirs or []:
+        candidate = os.path.join(tools_dir, name)
+        if os.access(candidate, os.X_OK):
+            return candidate
+    return None
 
 
 def sdp_checks(sdp: str) -> list:
@@ -169,7 +181,7 @@ def sdp_checks(sdp: str) -> list:
                         os.path.exists(env_script), env_script,
                         "Re-run the installer; the script must sit at the SDP "
                         "root."))
-    tools = _host_bin(sdp)
+    tools = _host_bins(sdp)
     qcc = _tool(tools, "qcc")
     checks.append(Check("qcc", "qcc -V gcc_ntox86_64 usable", qcc is not None,
                         qcc or "qcc not found",
@@ -182,9 +194,12 @@ def sdp_checks(sdp: str) -> list:
                         mkqnx or "mkqnximage not found",
                         "Install the SDP host tools; mkqnximage ships with the "
                         "image utilities."))
-    target = glob.glob(os.path.join(sdp, "target", "*", "x86_64le"))
-    checks.append(Check("target", "x86_64le sysroot present", None,
-                        target[0] if target else "no target/*/x86_64le tree",
+    # SDP 7.1 names the sysroot x86_64le; SDP 8.0 names it x86_64. Both hold
+    # the gcc_ntox86_64 target libraries.
+    target = (glob.glob(os.path.join(sdp, "target", "*", "x86_64le"))
+              + glob.glob(os.path.join(sdp, "target", "*", "x86_64")))
+    checks.append(Check("target", "x86_64 sysroot present", None,
+                        target[0] if target else "no target/*/x86_64(le) tree",
                         "The gcc_ntox86_64 sysroot is part of the SDP core "
                         "install."))
     return checks
@@ -318,7 +333,7 @@ def _print_resolver(report: Report, key: str) -> Optional[str]:
         script = os.path.join(report.sdp, SDP_ENV_SCRIPT)
         return script if os.path.exists(script) else None
     tool = "qcc" if key == "qcc" else "mkqnximage"
-    return _tool(_host_bin(report.sdp), tool)
+    return _tool(_host_bins(report.sdp), tool)
 
 
 def _print_value(report: Report, key: str, quiet: bool) -> int:

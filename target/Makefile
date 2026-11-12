@@ -8,7 +8,13 @@
 # All protocol logic comes from ../core: nothing here is re-implemented.
 
 QCC      ?= qcc
-QCCFLAGS ?= -V gcc_ntox86_64 -std=c11 -O2 -Wall -Wextra -Werror
+# -D_POSIX_C_SOURCE is NOT optional here: QNX's <sys/platform.h> only defines
+# __EXT_POSIX1_199506 (which guards strtok_r in <string.h>) when the POSIX
+# feature macro is set. Without it the real qcc build fails with an implicit
+# declaration, while the stub build (STUBFLAGS below) already had it — which is
+# why CI never saw this. Found by compiling with the real SDP 8.0.
+QCCFLAGS ?= -V gcc_ntox86_64 -std=c11 -O2 -Wall -Wextra -Werror \
+            -D_POSIX_C_SOURCE=200809L
 CORE     := ../core
 CORE_SRC := $(wildcard $(CORE)/src/*.c)
 INCLUDES := -I$(CORE)/include -Iinclude
