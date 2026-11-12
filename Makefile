@@ -245,6 +245,25 @@ coverage:
 clean:
 	rm -rf $(BUILD)
 
+# --- WCET measured on a target-like machine (mission M40) -------------------
+# APPEND-ONLY block: every line below was added at the end of this Makefile, no
+# existing line was rewritten. host/wcet/probe.c is the portable in-process
+# measurement of the critical path "STATUT received -> ORDRE emitted"
+# (clock_gettime CLOCK_MONOTONIC, same source for gcc and qcc); measure.py
+# drives it, host/timing/rta.py is reused for the response-time analysis and
+# target-report.py publishes one status per target, BLOCKED when not measured.
+WCET_DIR := host/wcet
+WCET_SRC := $(WCET_DIR)/probe.c $(WCET_DIR)/wcet_stats.c
+WCET_TEST_SRC := $(WCET_DIR)/test_wcet_stats.c
+WCET_SAMPLES ?= 20000
+WCET_WARMUP ?= 500
+WCET_RUNS ?= 2
+WCET_MODES ?= none,cpu,journal,net
+WCET_CPU ?=
+WCET_OUT ?= runs/wcet
+# Extra flags for host/wcet/measure.py, e.g. WCET_EXTRA=--no-keep-samples
+WCET_EXTRA ?=
+
 # --- Golden traces (mission M35) ---
 # The behavioural fingerprint of the core: a FROZEN game of scenarios is
 # replayed by the seeded simulator and every normalised journal is hashed
@@ -341,7 +360,8 @@ M31_STUDY := host/study
 .PHONY: m31 m31-test m31-brake m31-infeasible m31-sensitivity m31-testament m31-dataset transports \
      ports ports-zephyr ports-freertos ports-rust ports-compilers fuzz fuzz-long fuzz-report \
      demo-policy latency byzantine physics diversity diversity-variants diversity-compare \
-     diversity-laws impair golden golden-verify golden-update
+     diversity-laws impair golden golden-verify golden-update wcet wcet-probe wcet-test wcet-isolate \
+     wcet-report wcet-portable
 impair: $(BUILD)/relais-actuator $(BUILD)/relais-node $(BUILD)/relais-verify
 	python3 host/impair/run_impaired.py --out $(BUILD)/impair
 diversity: diversity-variants diversity-compare diversity-laws
@@ -362,7 +382,7 @@ latency: $(BUILD)/relais-actuator $(BUILD)/relais-node $(BUILD)/relais-latency
 	python3 $(LATENCY_CAMPAIGN) --out runs/latency
 
 all: $(CAN_TEST_BIN) $(UDP_CHECK_BIN) $(TRANSPORT_OBJ) $(BUILD)/test_latency $(BUILD)/relais-latency \
-     $(BUILD)/run_byzantine $(PHYSICS_BIN)
+     $(BUILD)/run_byzantine $(PHYSICS_BIN) $(BUILD)/relais-wcet-probe $(BUILD)/test_wcet_stats
 
 $(PHYSICS_BIN): $(PHYSICS_SRC) $(LIB)
 	@mkdir -p $(dir $@)
@@ -371,7 +391,49 @@ $(PHYSICS_BIN): $(PHYSICS_SRC) $(LIB)
 $(BUILD)/run_byzantine: $(BYZ_SRC) host/byzantine/inject.h $(LIB)
 	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS) $(CPPFLAGS) -Ihost/byzantine $(BYZ_SRC) $(LIB) $(LDLIBS) -o $@
-test: $(BUILD)/test_latency
+test: $(BUILD)/test_latency $(BUILD)/test_wcet_stats
+ALL_TEST_BIN += $(BUILD)/test_wcet_stats
+
+$(BUILD)/relais-wcet-probe: $(WCET_SRC) $(LIB)
+	@mkdir -p $(dir $@)
+	$(CC) $(CFLAGS) $(CPPFLAGS) -I$(WCET_DIR) $(WCET_SRC) $(LIB) $(LDLIBS) -o $@
+
+$(BUILD)/test_wcet_stats: $(WCET_TEST_SRC) $(WCET_DIR)/wcet_stats.c \
+    core/tests/test_util.c $(LIB)
+	@mkdir -p $(dir $@)
+	$(CC) $(CFLAGS) $(CPPFLAGS) -I$(WCET_DIR) $^ $(LDLIBS) -o $@
+
+wcet-probe: $(BUILD)/relais-wcet-probe
+
+# The machine preparation, on its own: prints what it could do without root and
+# what stays BLOCKED (governor, turbo, isolcpus, huge pages, SCHED_FIFO).
+wcet-isolate:
+	sh $(WCET_DIR)/isolate.sh $(if $(WCET_CPU),--cpu $(WCET_CPU))
+
+# The strongest portability proof available with no QNX SDP and no Pi: the probe
+# is C11 with -pedantic and _POSIX_C_SOURCE only (no GNU extension, no Linux or
+# QNX header), so the SAME source is what qcc and the Pi's gcc compile. This
+# proves the source is portable; it does NOT prove a timing number on the target.
+wcet-portable: $(WCET_SRC) $(WCET_TEST_SRC)
+	$(CC) -std=c11 -pedantic -Wall -Wextra -Werror -Wshadow -Wconversion \
+	  -Wno-sign-conversion -O2 -D_POSIX_C_SOURCE=200809L \
+	  -Icore/include -Icore/tests -I$(WCET_DIR) -fsyntax-only $^
+	@echo "WCET-PORTABLE-OK c11 -pedantic, POSIX 200809 only (no GNU extension)"
+
+wcet-test: $(BUILD)/test_wcet_stats
+	./$(BUILD)/test_wcet_stats
+	python3 -m unittest discover -s $(WCET_DIR) -p 'test_*.py'
+
+wcet-report:
+	@mkdir -p $(WCET_OUT)
+	python3 $(WCET_DIR)/target-report.py --out $(WCET_OUT)/TARGETS.md
+
+wcet: wcet-probe wcet-portable wcet-test
+	python3 $(WCET_DIR)/measure.py --samples $(WCET_SAMPLES) --warmup $(WCET_WARMUP) \
+	  --runs $(WCET_RUNS) --interference $(WCET_MODES) --lock \
+	  $(if $(WCET_CPU),--cpu $(WCET_CPU)) $(WCET_EXTRA)
+	python3 $(WCET_DIR)/rta.py --sweep
+	$(MAKE) wcet-report
 $(BUILD)/relais-node: $(LATENCY_SRC)
 
 $(BUILD)/test_latency: $(LATENCY_TEST_SRC) $(LATENCY_SRC) core/tests/test_util.c $(LIB)
