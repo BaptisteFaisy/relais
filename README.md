@@ -262,6 +262,7 @@ Targets per level and acceptance criteria:
 - [docs/PROTOCOL.md](docs/PROTOCOL.md) — implementation-level protocol: byte-by-byte frames, tick sequence, state machines, journal
 - [docs/TRUTH-TABLE.md](docs/TRUTH-TABLE.md) — fault-by-fault expected behaviour
 - [docs/SAFETY.md](docs/SAFETY.md) — safety document modelled on Annex 6 §3.4.3.2
+- [docs/SECURITY.md](docs/SECURITY.md) — threat model, key exchange and rotation, anti-replay, chained journal, and their limits
 - [CONTRACT.md](CONTRACT.md) — frozen contract for contributors
 - [docs/spec-fr.md](docs/spec-fr.md) — original French specification
 - [docs/MUTATION-SCORE.md](docs/MUTATION-SCORE.md) — mutation score of the core: are the tests strong, measured

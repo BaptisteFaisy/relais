@@ -113,43 +113,70 @@ static void sip_round(uint64_t v[4]) {
   v[2] = rotl64(v[2], 32);
 }
 
-/* The 64-bit MAC of a buffer under a link key (SEC-02). */
-uint64_t relais_mac(const relais_key *k, const void *data, size_t len) {
-  if (k == NULL) return 0;
+/* The SipHash-2-4 state of a key: the four registers the permutation mixes.
+ * A NULL key falls back to an all-zero key, so the streaming form never reads
+ * through a null pointer (the one-shot relais_mac() refuses it instead). */
+void relais_siphash_init(relais_siphash *h, const relais_key *k) {
+  if (h == NULL) return;
+  static const relais_key no_key = { { 0 }, false };
+  const relais_key *key = (k != NULL) ? k : &no_key;
+  const uint64_t k0 = load64le(key->bytes);
+  const uint64_t k1 = load64le(key->bytes + 8);
+  h->v[0] = k0 ^ 0x736f6d6570736575ull; /* "somepseu" */
+  h->v[1] = k1 ^ 0x646f72616e646f6dull; /* "dorandom" */
+  h->v[2] = k0 ^ 0x6c7967656e657261ull; /* "lygenera" */
+  h->v[3] = k1 ^ 0x7465646279746573ull; /* "tedbytes" */
+  memset(h->tail, 0, sizeof h->tail);
+  h->ntail = 0;
+  h->total = 0;
+}
+
+/* Compress one 8-byte word, read little-endian as the specification demands. */
+static void sip_compress_word(relais_siphash *h, uint64_t m) {
+  h->v[3] ^= m;
+  sip_round(h->v);
+  sip_round(h->v);
+  h->v[0] ^= m;
+}
+
+void relais_siphash_update(relais_siphash *h, const void *data, size_t len) {
+  if (h == NULL || len == 0) return;
   const uint8_t *p = (const uint8_t *)data;
-  if (p == NULL && len > 0u) return 0;
+  if (p == NULL) return;
+  h->total += (uint64_t)len;
 
-  const uint64_t k0 = load64le(k->bytes);
-  const uint64_t k1 = load64le(k->bytes + 8);
-  uint64_t v[4] = {
-    k0 ^ 0x736f6d6570736575ull, /* "somepseu" */
-    k1 ^ 0x646f72616e646f6dull, /* "dorandom" */
-    k0 ^ 0x6c7967656e657261ull, /* "lygenera" */
-    k1 ^ 0x7465646279746573ull  /* "tedbytes" */
-  };
-
-  const size_t blocks = len / 8u;
-  for (size_t i = 0; i < blocks; i++) {
-    const uint64_t m = load64le(p + i * 8u);
-    v[3] ^= m;
-    sip_round(v);
-    sip_round(v);
-    v[0] ^= m;
+  /* Finish the pending partial word first, so the body loop is word aligned. */
+  if (h->ntail != 0) {
+    size_t want = sizeof h->tail - (size_t)h->ntail;
+    if (want > len) want = len;
+    memcpy(h->tail + h->ntail, p, want);
+    h->ntail = (uint8_t)(h->ntail + (uint8_t)want);
+    p += want;
+    len -= want;
+    if (h->ntail == sizeof h->tail) {
+      sip_compress_word(h, load64le(h->tail));
+      h->ntail = 0;
+    }
   }
-
-  /* Last block: the remaining bytes, then the length in the top byte. */
-  uint64_t b = ((uint64_t)len) << 56;
-  const uint8_t *tail = (len == 0u) ? NULL : p + blocks * 8u;
-  switch (len & 7u) {
-    case 7: b |= (uint64_t)tail[6] << 48; /* fallthrough */
-    case 6: b |= (uint64_t)tail[5] << 40; /* fallthrough */
-    case 5: b |= (uint64_t)tail[4] << 32; /* fallthrough */
-    case 4: b |= (uint64_t)tail[3] << 24; /* fallthrough */
-    case 3: b |= (uint64_t)tail[2] << 16; /* fallthrough */
-    case 2: b |= (uint64_t)tail[1] << 8;  /* fallthrough */
-    case 1: b |= (uint64_t)tail[0]; break;
-    default: break;
+  while (len >= sizeof h->tail) {
+    sip_compress_word(h, load64le(p));
+    p += sizeof h->tail;
+    len -= sizeof h->tail;
   }
+  if (len > 0) {
+    memset(h->tail, 0, sizeof h->tail);
+    memcpy(h->tail, p, len);
+    h->ntail = (uint8_t)len;
+  }
+}
+
+uint64_t relais_siphash_final(const relais_siphash *h) {
+  if (h == NULL) return 0;
+  uint64_t v[4];
+  memcpy(v, h->v, sizeof v);
+  /* Last block: the remaining bytes, then the total length in the top byte. */
+  uint64_t b = h->total << 56;
+  for (uint8_t i = 0; i < h->ntail; i++) b |= (uint64_t)h->tail[i] << (8u * (uint32_t)i);
   v[3] ^= b;
   sip_round(v);
   sip_round(v);
@@ -161,6 +188,17 @@ uint64_t relais_mac(const relais_key *k, const void *data, size_t len) {
   sip_round(v);
   sip_round(v);
   return v[0] ^ v[1] ^ v[2] ^ v[3];
+}
+
+/* The 64-bit MAC of a buffer under a link key (SEC-02). */
+uint64_t relais_mac(const relais_key *k, const void *data, size_t len) {
+  if (k == NULL) return 0;
+  const uint8_t *p = (const uint8_t *)data;
+  if (p == NULL && len > 0u) return 0;
+  relais_siphash h;
+  relais_siphash_init(&h, k);
+  relais_siphash_update(&h, p, len);
+  return relais_siphash_final(&h);
 }
 
 /* --------------------------------------------------------------------- keys */
@@ -178,20 +216,48 @@ static int hex_digit(char c) {
   return -1;
 }
 
+static const char hex_digits[] = "0123456789abcdef";
+
+int relais_hex_encode(const uint8_t *in, size_t len, char *out, size_t cap) {
+  if (out == NULL || cap < 2u * len + 1u) return -1;
+  if (in == NULL && len > 0u) return -1;
+  for (size_t i = 0; i < len; i++) {
+    out[2u * i] = hex_digits[(size_t)(in[i] >> 4)];
+    out[2u * i + 1u] = hex_digits[(size_t)(in[i] & 0x0fu)];
+  }
+  out[2u * len] = '\0';
+  return (int)(2u * len);
+}
+
+bool relais_hex_decode(const char *hex, uint8_t *out, size_t len) {
+  if (hex == NULL || out == NULL) return false;
+  if (strlen(hex) != 2u * len) return false; /* exact width, no more, no less */
+  for (size_t i = 0; i < len; i++) {
+    const int hi = hex_digit(hex[2u * i]);
+    const int lo = hex_digit(hex[2u * i + 1u]);
+    if (hi < 0 || lo < 0) return false;
+    out[i] = (uint8_t)((hi << 4) | lo);
+  }
+  return true;
+}
+
+void relais_put_u64le(uint8_t *out, uint64_t v) {
+  if (out == NULL) return;
+  for (size_t i = 0; i < 8u; i++) out[i] = (uint8_t)(v >> (8u * (uint32_t)i));
+}
+
+uint64_t relais_get_u64le(const uint8_t *p) {
+  if (p == NULL) return 0;
+  return load64le(p);
+}
+
 /* Parse 32 hexadecimal digits into the 16 bytes of a key. Any other length,
  * or any character that is not a hexadecimal digit, is refused and leaves the
  * key untouched. A key that parsed is a key that is used: enabled is set. */
 bool relais_key_from_hex(relais_key *k, const char *hex) {
-  if (k == NULL || hex == NULL) return false;
-  if (strlen(hex) != 32u) return false; /* 32 digits = 16 bytes, no more, no less */
-
+  if (k == NULL) return false;
   uint8_t bytes[16];
-  for (size_t i = 0; i < 16u; i++) {
-    const int hi = hex_digit(hex[2u * i]);
-    const int lo = hex_digit(hex[2u * i + 1u]);
-    if (hi < 0 || lo < 0) return false;
-    bytes[i] = (uint8_t)((hi << 4) | lo);
-  }
+  if (!relais_hex_decode(hex, bytes, sizeof bytes)) return false;
   memcpy(k->bytes, bytes, sizeof bytes);
   k->enabled = true;
   return true;

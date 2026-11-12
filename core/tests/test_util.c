@@ -39,6 +39,12 @@ int t_summary(void) {
   return 0;
 }
 
+bool t_key(relais_key *k, const char *hex) {
+  const bool ok = relais_key_from_hex(k, hex);
+  T_CHECK(ok);
+  return ok;
+}
+
 void t_rng_seed(t_rng *r, uint64_t seed) { r->s = seed ? seed : 0x9e3779b97f4a7c15ull; }
 
 uint64_t t_rng_next(t_rng *r) {
