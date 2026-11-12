@@ -245,6 +245,22 @@ coverage:
 clean:
 	rm -rf $(BUILD)
 
+# --- Soak (mission M42) ---
+# The long soak: a continuous campaign with an anomaly hunter. The duration is
+# a parameter, so one target serves the short smoke test of the verification
+# and a campaign of several hours in the background:
+#   make soak                          three-minute smoke test
+#   make soak SOAK_MINUTES=30          a real half-hour campaign
+#   make soak SOAK_TICKS=250000        bigger runs
+#   make soak-long                     four hours in the background
+# Stop a long campaign cleanly with:  kill -TERM $(cat results/soak-long/soak.pid)
+# The pilot never runs more than two bench processes at a time and shortens
+# itself when the machine is too busy to carry the campaign.
+SOAK_MINUTES ?= 3
+SOAK_LONG_MINUTES ?= 240
+SOAK_TICKS ?= 100000
+SOAK_JOBS ?= 2
+
 # --- Mission M43: the measured comparison with the state of the art ---
 # host/baseline holds one world (harness.c) and three protocols: the real
 # core through relais_backend.c, a heartbeat + watchdog baseline and a
@@ -466,7 +482,15 @@ M31_STUDY := host/study
      ports ports-zephyr ports-freertos ports-rust ports-compilers fuzz fuzz-long fuzz-report \
      demo-policy latency byzantine physics diversity diversity-variants diversity-compare \
      diversity-laws impair golden golden-verify golden-update wcet wcet-probe wcet-test wcet-isolate \
-     wcet-report wcet-portable fmeda induction baseline compare
+     wcet-report wcet-portable fmeda induction baseline compare soak soak-long
+soak: $(BUILD)/relais-simulate $(BUILD)/relais-verify
+	python3 host/soak/test_soak.py
+	python3 host/soak/soak.py --minutes $(SOAK_MINUTES) --ticks $(SOAK_TICKS) \
+	  --jobs $(SOAK_JOBS) --out results/soak
+
+soak-long: $(BUILD)/relais-simulate $(BUILD)/relais-verify
+	python3 host/soak/soak.py --minutes $(SOAK_LONG_MINUTES) --ticks $(SOAK_TICKS) \
+	  --jobs $(SOAK_JOBS) --out results/soak-long
 baseline: $(BUILD)/relais-baseline $(BUILD)/test_baseline
 	@./$(BUILD)/test_baseline
 
