@@ -57,7 +57,7 @@ MUTANTS := 1 2 3 4 5 6 7 8
      mutant-explore noninterference
 all: $(LIB) $(TEST_BIN) $(EXPLORE_BIN) $(BUILD)/relais-simulate $(BUILD)/relais-actuator \
      $(BUILD)/relais-verify $(BUILD)/relais-node $(BUILD)/relais-bridge $(ALL_TEST_BIN) \
-     $(BUILD)/relais-faultinject $(NONINTERF_BIN)
+     $(BUILD)/relais-faultinject $(NONINTERF_BIN) $(BUILD)/relais-intruder
 
 $(LIB): $(CORE_OBJ)
 	@mkdir -p $(dir $@)
@@ -129,6 +129,13 @@ noninterference: $(NONINTERF_BIN)
 $(BUILD)/relais-node: $(NODE_SRC) $(LIB)
 	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS) $(CPPFLAGS) $(NODE_SRC) $(LIB) $(LDLIBS) -o $@
+
+# The intruder (idea 35): an adversarial process, run on purpose. It includes
+# the QNX header for the real device paths, hence the host stub.
+INTRUDER_SRC := host/bench/intruder.c
+$(BUILD)/relais-intruder: $(INTRUDER_SRC) $(LIB)
+	@mkdir -p $(dir $@)
+	$(CC) $(CFLAGS) $(CPPFLAGS) -Itarget/include -DRELAIS_HOST_STUB $< $(LIB) $(LDLIBS) -o $@
 
 # The fault-injection campaign: drives the same sim world, injects bit flips,
 # and emits one JSON line per run that host/faultinject/campaign.py aggregates.
@@ -203,6 +210,26 @@ size:
 	@for f in $(shell find core actuator host target -name '*.c' -o -name '*.h' -o -name '*.py' 2>/dev/null); do \
 	  n=$$(wc -l < $$f); [ $$n -lt 500 ] || echo "TOO LONG: $$f ($$n)"; done; echo "size check done"
 
+# Fuzzing and sanitizers (ROB-09): the real targets, the real sanitizers, a
+# bounded budget for CI and `make fuzz-long` for the 24 h run. Everything lives
+# in host/fuzz, which picks libFuzzer when clang is there and falls back to its
+# own seeded generator under gcc + ASAN/UBSAN when it is not.
+FUZZ_BUDGET ?= 60
+FUZZ_LONG   ?= 86400
+fuzz:
+	@$(MAKE) --no-print-directory -C host/fuzz fuzz FUZZ_BUDGET=$(FUZZ_BUDGET)
+
+fuzz-long:
+	@$(MAKE) --no-print-directory -C host/fuzz fuzz-long FUZZ_LONG=$(FUZZ_LONG)
+
+fuzz-report:
+	@$(MAKE) --no-print-directory -C host/fuzz report
+
+# Idea 35: the opposed policy. The intruder attacks, the system refuses, and the
+# refusal is the real output of the real system call (docs/SECURITY-POLICY-DEMO.md).
+demo-policy: $(BUILD)/relais-intruder
+	./$(BUILD)/relais-intruder --port 7100
+
 # --- Coverage (mission M14) ---
 # Rebuilds core/ and host/ with --coverage, replays the unit tests, the seeded
 # simulator over a fixed fault set, the offline verifier and the explorer, then
@@ -248,7 +275,8 @@ UDP_CHECK_BIN := $(BUILD)/transport-udp-check
 M31_STUDY := host/study
 
 .PHONY: m31 m31-test m31-brake m31-infeasible m31-sensitivity m31-testament m31-dataset transports \
-     ports ports-zephyr ports-freertos ports-rust ports-compilers
+     ports ports-zephyr ports-freertos ports-rust ports-compilers fuzz fuzz-long fuzz-report \
+     demo-policy
 
 all: $(CAN_TEST_BIN) $(UDP_CHECK_BIN) $(TRANSPORT_OBJ)
 

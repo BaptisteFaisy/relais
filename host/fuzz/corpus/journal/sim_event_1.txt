@@ -1,0 +1,1 @@
+{"kind":"event","tick":1,"ns":0,"event":"lamp_change","node":"","mandate":0,"detail":2,"text":"lamp_change"}
