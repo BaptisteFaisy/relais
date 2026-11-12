@@ -34,6 +34,8 @@ typedef struct {
     bool set;
   } peer[MAX_PEERS];
   FILE *journal;
+  relais_jw jw;         /* chained journal writer, shared with the PC actuator */
+  relais_key chain_key; /* journal chain key, distinct from the frame MAC key */
   const char *state_path;
   uint32_t ticks;
   bool realtime;
@@ -43,7 +45,8 @@ static void usage(void) {
   fprintf(stderr,
           "usage: relais-actuator --port 7100 --peer A=HOST:PORT --peer B=HOST:PORT\n"
           "       [--ticks N] [--params T=5,p=1,N=8] [--trajectory \"kind=slalom\"]\n"
-          "       [--journal FILE] [--state FILE] [--key HEX32] [--no-realtime]\n");
+          "       [--journal FILE] [--state FILE] [--key HEX32]\n"
+          "       [--chain-key HEX32] [--no-realtime]\n");
 }
 
 static bool parse_peer(const char *spec, act_t *cfg) {
@@ -126,8 +129,8 @@ static void beat(act_t *cfg, relais_arb *arb, relais_plant *plant, relais_tick t
   out.statut.meas = meas;
 
   /* Events before the tick record: the order the verifier reads them in. */
-  relais_jw_write_events(cfg->journal, &out, tick);
-  relais_jw_write_tick(cfg->journal, &out, tick, plant, meas.setpoint);
+  relais_jw_write_events(&cfg->jw, &out, tick);
+  relais_jw_write_tick(&cfg->jw, &out, tick, plant, meas.setpoint);
   publish(cfg, &out.statut);
   rl_trace("act tick %llu src %s man %u", (unsigned long long)tick,
            relais_source_name(out.source), (unsigned)out.mandate);
@@ -165,6 +168,7 @@ int main(int argc, char **argv) {
   relais_params_default(&cfg.params);
   relais_traj_default(&cfg.traj);
   relais_key_clear(&cfg.key);
+  relais_key_clear(&cfg.chain_key);
   cfg.ticks = 4000;
   cfg.realtime = true;
   int port = 0;
@@ -191,6 +195,8 @@ int main(int argc, char **argv) {
     } else if (!strcmp(a, "--state") && i + 1 < argc) cfg.state_path = argv[++i];
     else if (!strcmp(a, "--key") && i + 1 < argc) {
       if (!relais_key_from_hex(&cfg.key, argv[++i])) { usage(); return 2; }
+    } else if (!strcmp(a, "--chain-key") && i + 1 < argc) {
+      if (!relais_key_from_hex(&cfg.chain_key, argv[++i])) { usage(); return 2; }
     } else if (!strcmp(a, "--no-realtime")) cfg.realtime = false;
     else { usage(); return 2; }
   }
@@ -207,7 +213,8 @@ int main(int argc, char **argv) {
   restore_state(&cfg, &arb);
   relais_plant plant;
   relais_plant_init(&plant, 0.0f, cfg.traj.seed);
-  relais_jw_write_header(cfg.journal, &cfg.params, relais_mutant_name(), cfg.traj.seed);
+  relais_jw_open(&cfg.jw, cfg.journal, &cfg.chain_key);
+  relais_jw_write_header(&cfg.jw, &cfg.params, relais_mutant_name(), cfg.traj.seed);
 
   /* QNX-02: the tempo is a pulse from a kernel timer, not a sleep loop. The
    * socket and the timer are waited on in the same poll, so a frame that
@@ -229,6 +236,10 @@ int main(int argc, char **argv) {
   }
 
   save_state(&cfg, &arb);
+  char anchor[RELAIS_CHAIN_HEX + 1];
+  if (relais_jw_anchor(&cfg.jw, anchor, sizeof anchor) > 0)
+    rl_log(SLOG2_INFO, "actuator: journal chain anchor %s (%zu records)", anchor,
+           cfg.jw.records);
   if (fflush(cfg.journal) != 0) rl_log(SLOG2_ERROR, "actuator: journal flush failed");
   fclose(cfg.journal);
   close(cfg.sock);
