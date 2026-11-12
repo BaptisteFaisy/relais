@@ -39,7 +39,10 @@ EXPLORE_TEST_BIN := $(patsubst host/explore/%.c,$(BUILD)/%,$(EXPLORE_TEST_SRC))
 ALL_TEST_BIN := $(TEST_BIN) $(EXPLORE_TEST_BIN)
 SIMULATE_SRC := $(sort $(wildcard host/simulate/*.c))
 ACTUATOR_SRC := $(sort $(wildcard actuator/*.c actuator/pc/*.c))
-VERIFY_SRC := $(sort $(wildcard host/verify/*.c))
+VERIFY_SRC := $(sort $(filter-out host/verify/noninterference.c,$(wildcard host/verify/*.c)))
+# The non-interference harness is a stand-alone proof-by-test binary; it shares
+# the core but not the verifier's main, so it is built apart (M12).
+NONINTERF_BIN := $(BUILD)/noninterference
 NODE_SRC := $(sort $(wildcard host/node/*.c))
 # Fault injection (M18): bit flips, corruption, resource exhaustion, and the
 # campaign driver that measures them against the same sim world as the bench.
@@ -51,10 +54,10 @@ LIB := $(BUILD)/librelais.a
 MUTANTS := 1 2 3 4 5 6 7 8
 
 .PHONY: all test explore simulate verify mutants report demo campaign clean size coverage \
-     mutant-explore
+     mutant-explore noninterference
 all: $(LIB) $(TEST_BIN) $(EXPLORE_BIN) $(BUILD)/relais-simulate $(BUILD)/relais-actuator \
      $(BUILD)/relais-verify $(BUILD)/relais-node $(BUILD)/relais-bridge $(ALL_TEST_BIN) \
-     $(BUILD)/relais-faultinject
+     $(BUILD)/relais-faultinject $(NONINTERF_BIN)
 
 $(LIB): $(CORE_OBJ)
 	@mkdir -p $(dir $@)
@@ -115,6 +118,13 @@ $(BUILD)/relais-actuator: $(ACTUATOR_SRC) $(LIB)
 $(BUILD)/relais-verify: $(VERIFY_SRC) $(LIB)
 	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS) $(CPPFLAGS) $(VERIFY_SRC) $(LIB) $(LDLIBS) -o $@
+
+$(NONINTERF_BIN): host/verify/noninterference.c $(LIB)
+	@mkdir -p $(dir $@)
+	$(CC) $(CFLAGS) $(CPPFLAGS) host/verify/noninterference.c $(LIB) $(LDLIBS) -o $@
+
+noninterference: $(NONINTERF_BIN)
+	./$(NONINTERF_BIN) --runs 200
 
 $(BUILD)/relais-node: $(NODE_SRC) $(LIB)
 	@mkdir -p $(dir $@)
