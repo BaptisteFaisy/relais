@@ -1,5 +1,5 @@
 {
-  "repo": "https://github.com/BaptisteFaisy/relais",
+  "repo": "https://github.com/Tradoooo/relais",
   "themes": [
     {
       "id": "core",
@@ -271,6 +271,30 @@
           ],
           "code": [],
           "proof": ""
+        },
+        {
+          "title": "k-induction: the invariants without a depth bound",
+          "summary": "The explorer proves the invariants up to a depth; the induction engine proves that if they hold on k consecutive steps they hold for ever — so the claim is no longer 'true for 10 million states'.",
+          "requirements": [
+            "ROB-03"
+          ],
+          "docs": [],
+          "code": [
+            "host/explore/induction.c"
+          ],
+          "proof": "make induction"
+        },
+        {
+          "title": "A bounded-exhaustive proof over the C source itself",
+          "summary": "The frame decoder and the arbiter are exercised over an exhausted input space, with the harnesses for CBMC and Frama-C ready for when those tools are installed.",
+          "requirements": [
+            "SEC-02"
+          ],
+          "docs": [],
+          "code": [
+            "host/modelcheck"
+          ],
+          "proof": "make exhaustive"
         }
       ]
     },
@@ -370,6 +394,30 @@
             "scenarios"
           ],
           "proof": "make campaign"
+        },
+        {
+          "title": "Faults that are not simulated",
+          "summary": "The holder is killed for real (SIGKILL), the link is really cut, and the handover is measured on the target's own clock.",
+          "requirements": [
+            "INJ-01"
+          ],
+          "docs": [],
+          "code": [
+            "host/hil"
+          ],
+          "proof": "make hil"
+        },
+        {
+          "title": "A degraded network, played for real",
+          "summary": "A seeded UDP impairment proxy applies loss, bursts, duplication, reordering and asymmetric delay between the two machines, and the protocol is measured under each profile.",
+          "requirements": [
+            "INJ-02"
+          ],
+          "docs": [],
+          "code": [
+            "host/impair"
+          ],
+          "proof": "make impair"
         }
       ]
     },
@@ -645,6 +693,75 @@
             "target"
           ],
           "proof": "make -C target syntax"
+        },
+        {
+          "title": "The QNX layer, compiled by the real toolchain",
+          "summary": "The five QNX processes are cross-compiled by qcc (SDP 8.0, gcc_ntox86_64) against the real QNX headers — not against stubs. That is how three genuine defects were found: a missing feature macro, a wrong journal API and a dozen undeclared QNX functions.",
+          "requirements": [
+            "QNX-01",
+            "QNX-02"
+          ],
+          "docs": [
+            "docs/QNX-BUILD.md"
+          ],
+          "code": [
+            "target",
+            "docs/QNX-BUILD.md"
+          ],
+          "proof": "make -C target"
+        },
+        {
+          "title": "A real QNX 8.0 image, booted under QEMU with KVM",
+          "summary": "mkqnximage packs the processes into a bootable image, QEMU starts it with hardware acceleration, and the guest's own console and clock are used to measure. The boot log and the screenshots on this page come from that guest.",
+          "requirements": [
+            "QNX-04",
+            "OBS-02"
+          ],
+          "docs": [
+            "docs/QNX-RUN.md"
+          ],
+          "code": [
+            "host/bench/qnx_image.py",
+            "host/bench/qnx_vm.py",
+            "docs/figures/qnx-guest"
+          ],
+          "proof": "make qnx-proof"
+        },
+        {
+          "title": "The protocol, killed and handed over inside QNX 8.0",
+          "summary": "The real actuator and node ran in a QNX 8.0 guest under KVM; the holder was SIGKILLed from inside the guest and the actuator revoked the mandate on its own evidence after p+1 misses, at tick 608, with the takeover detected 23 ms later and 0 violation over 1200 ticks.",
+          "requirements": [
+            "QNX-01",
+            "MAN-01",
+            "INJ-01"
+          ],
+          "docs": [],
+          "code": [
+            "host/bench/qnx_relais.py",
+            "image/fragments/rl-relais-failover.sh",
+            "docs/evidence/qnx-m48-relais.json"
+          ],
+          "proof": "make qnx-relais"
+        },
+        {
+          "title": "Two machines, one actuator, and a real freeze",
+          "summary": "Machine B is a QNX 8.0 guest running the node compiled by qcc; QMP stop freezes the whole guest and the actuator withdraws its mandate on its own evidence after p+1 misses, handing it to the certified second. The takeover is measured and the invariants are read back from the guest's own journal.",
+          "requirements": [
+            "MAN-01",
+            "MAN-04",
+            "DET-03",
+            "QNX-01"
+          ],
+          "docs": [
+            "docs/QNX-DEMO.md"
+          ],
+          "code": [
+            "host/bench/qnx_demo.py",
+            "image/fragments/rl-node-boot.sh",
+            "docs/evidence/qnx-demo-qnx-demo.json",
+            "docs/figures/qnx-demo-proof.svg"
+          ],
+          "proof": "make qnx-demo"
         }
       ]
     },
@@ -725,6 +842,30 @@
             ".github/workflows"
           ],
           "proof": ""
+        },
+        {
+          "title": "Golden traces: no behavioural regression can merge",
+          "summary": "A fixed set of scenarios is replayed and the fingerprints of their journals are compared; a change in the sequence of decisions is refused even when every test stays green.",
+          "requirements": [
+            "REP-02"
+          ],
+          "docs": [],
+          "code": [
+            "tools/golden"
+          ],
+          "proof": "make golden"
+        },
+        {
+          "title": "A long campaign with an anomaly hunter",
+          "summary": "A soak runs for hours and freezes the scene the instant something looks wrong, so a rare failure arrives with its context instead of as a number.",
+          "requirements": [
+            "ROB-06"
+          ],
+          "docs": [],
+          "code": [
+            "host/soak"
+          ],
+          "proof": "make soak"
         }
       ]
     },
@@ -768,6 +909,18 @@
             "host/physics"
           ],
           "proof": ""
+        },
+        {
+          "title": "The state of the art, measured the same way",
+          "summary": "A heartbeat-with-timeout and a lease-based design are implemented and run on the same scenarios, so the comparison is a measurement and not an opinion.",
+          "requirements": [
+            "PERF-09"
+          ],
+          "docs": [],
+          "code": [
+            "host/baseline"
+          ],
+          "proof": "make compare"
         }
       ]
     },
