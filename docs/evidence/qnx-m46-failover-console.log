@@ -1,0 +1,37 @@
+
+non UEFI or UEFI+CSM boot
+ACPI table not found (0x4746434d)
+overriding mask for controller 2, vector_base 0
+---> Starting slogger2
+---> Starting PCI Services
+# ---> Starting fsevmgr
+---> Starting devb
+---> Mounting file systems
+Path=0 - Intel 82371SB
+ target=0 lun=0     Direct-Access(0) -          QEMU HARDDISK    Rev: 2.5+
+Path=1 - Intel 82371SB
+ target=0 lun=0            CD-ROM(5) - QEMU     QEMU DVD-ROM     Rev: 2.5+
+---> Mounting file systems
+---> Starting Networking
+---> Starting sshd
+/usr/libexec/sshd-auth does not exist or is not executable
+---> Starting misc
+
+To exit QEMU, type <ctrl>a x
+
+[?7hProcess count:22
+Startup complete
+QNXe crheol a"i_s_-RmL4_6S "8".0H.E0L L2_0R2E6A/D0Y6_/05_-"16
+:23EDT__RL_SHELL_REA x86pcDY__ 
+6_6# 4
+echo "__RL_S""HELL_READY__"
+__RL_SHELL_READY__
+# /proc/boot/rl-failover.sh ; echo "__RL_DONE""__"$?
+rl-failover: second_up port=41234 silence_ms=40
+rl-failover: holder_up pid=610323 port=41234 interval_ms=10
+rl-failover: killing holder_pid=610323
+rl-failover: takeover takeover_us=41981 heartbeats=92
+rl-failover: done rc=0
+rl-failover: scenario_complete rc=0
+__RL_DONE__0
+# 

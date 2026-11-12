@@ -1,0 +1,36 @@
+{
+  "accel": "kvm",
+  "boot_seconds": 12.3,
+  "guest_status": 0,
+  "proof": {
+    "uname": {
+      "sys": "QNX",
+      "rel": "8.0.0",
+      "ver": "2026/06/05-16:26:03EDT",
+      "machine": "x86pc",
+      "node": "relais-m46"
+    },
+    "gettime_us": {
+      "calls": "10000",
+      "min_us": "0.012",
+      "mean_us": "0.016",
+      "max_us": "3.118"
+    },
+    "sleep_overshoot_us": {
+      "calls": "200",
+      "min_us": "646.573",
+      "mean_us": "998.222",
+      "max_us": "1069.914"
+    },
+    "done": {
+      "rc": "0"
+    }
+  },
+  "host_loadavg": [
+    7.57,
+    13.82,
+    13.58
+  ],
+  "transcript": "/tmp/rl-w46/runs/qnx-vm/console.log",
+  "qemu_command": "/usr/bin/qemu-system-x86_64 -smp 2 -m 1G -enable-kvm -cpu host -kernel /tmp/rl-w46/build/qnx-vm/output/ifs.bin -drive file=/tmp/rl-w46/build/qnx-vm/output/disk-qemu.vmdk,if=ide,id=drv0 -netdev user,id=net0,host=10.0.2.2 -device virtio-net-pci,netdev=net0,mac=52:54:00:46:4d:36 -object rng-random,filename=/dev/urandom,id=rng0 -device virtio-rng-pci,rng=rng0 -chardev socket,id=ser0,path=/tmp/rl-w46/runs/qnx-vm/console.sock,server=on,wait=off -serial chardev:ser0 -qmp unix:/tmp/rl-w46/runs/qnx-vm/qmp.sock,server=on,wait=off -display none -monitor none -pidfile /tmp/rl-w46/runs/qnx-vm/qemu.pid"
+}

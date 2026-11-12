@@ -667,3 +667,26 @@ m31-testament:
 
 m31-dataset:
 	python3 $(M31_STUDY)/dataset_replay.py --all
+
+# --- M46: QNX 8.0 image + QEMU/KVM boot + measurements in the real guest ---
+# These targets need the SDP 8.0 (~/qnx800) and /dev/kvm for honest timings;
+# they boot ONE VM at a time and stop it before returning (no orphans).
+# They are deliberately NOT part of all/test (CI budget: 5 min per job).
+QNX_VM := python3 host/bench/qnx_vm.py
+QNX_FAILOVER := python3 host/bench/qnx_failover.py
+
+.PHONY: qnx-vm-test qnx-image qnx-proof qnx-failover-stub qnx-relais
+qnx-vm-test:
+	python3 -m unittest discover -s host/bench -p 'test_qnx_*.py'
+
+qnx-image:
+	$(QNX_VM) build
+
+qnx-proof:
+	$(QNX_VM) proof
+
+qnx-failover-stub:
+	$(QNX_FAILOVER) stub
+
+qnx-relais:
+	$(QNX_FAILOVER) relais

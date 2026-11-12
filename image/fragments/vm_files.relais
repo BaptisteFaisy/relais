@@ -1,0 +1,15 @@
+# Relais M46 — file mapping for the REAL banc inside the QNX guest.
+#
+# BLOCKED(target/ does not compile with qcc yet — see mission M45): the five
+# binaries below do not exist in target/build until M45 lands. The mapping is
+# ready so `qnx_vm.py relais` works the moment `make -C target` succeeds;
+# qnx_vm.py refuses to boot and says exactly this when a path is missing.
+#
+# Syntax: <image_name>=<host_path relative to the repo root> (see
+# vm_files.failover for the mkifs-safe injection rules).
+
+relais-net=target/build/relais-net
+relais-core=target/build/relais-core
+relais-ctl=target/build/relais-ctl
+relaisctl=target/build/relaisctl
+relais-actuator=target/build/relais-actuator
