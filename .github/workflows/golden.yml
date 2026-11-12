@@ -1,0 +1,51 @@
+name: golden
+
+# Mission M35 — the behavioural fingerprint of the core.
+#
+# On every pull request the FROZEN game of scenarios (tools/golden/scenarios.json)
+# is replayed by the seeded simulator, and the SHA-256 of every normalised
+# journal is compared with the versioned reference (tools/golden/traces.json).
+#
+# A divergence means the DECISIONS of the core changed: the mandate, the
+# applied value, the source of the value (holder / shadow / testament /
+# fallback), the lamp or the events. Such a pull request must justify the
+# change and refresh the reference ON PURPOSE (docs/GOLDEN.md). This workflow
+# never rewrites the reference: it only reads it.
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: golden-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  golden:
+    name: golden
+    runs-on: [self-hosted, linux, x64, relais-worker]
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+          clean: false
+
+      # The runners are persistent: a build/ left by a previous run could make
+      # `make` skip the rebuild and the guard would check a stale binary.
+      - name: Nettoyage du workspace
+        shell: bash
+        run: git clean -ffdx
+
+      - name: Build the simulator (the core and the seeded model)
+        run: make -j"$(nproc)" build/relais-simulate
+
+      - name: Tests of the golden tool
+        run: python3 -m unittest discover -s tools/golden -p 'test_*.py'
+
+      - name: Verify the golden traces
+        run: python3 tools/golden/verify.py
