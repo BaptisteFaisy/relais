@@ -1,0 +1,882 @@
+{
+  "repo": "https://github.com/BaptisteFaisy/relais",
+  "themes": [
+    {
+      "id": "core",
+      "title": "The core — one C11 library, three builds",
+      "hook": "No clock, no file, no socket, no allocation: the same source is the QNX process, the simulator and the explorer.",
+      "features": [
+        {
+          "title": "Frames: CRC-32C and a keyed MAC",
+          "summary": "Every frame carries a checksum and a SipHash-2-4 tag; a forged or corrupted frame is rejected before it reaches the arbiter.",
+          "requirements": [
+            "SEC-01",
+            "SEC-02"
+          ],
+          "docs": [
+            "docs/PROTOCOL.md"
+          ],
+          "code": [
+            "core/src/check.c",
+            "core/include/relais/check.h"
+          ],
+          "proof": "make test"
+        },
+        {
+          "title": "The actuator is the arbiter",
+          "summary": "It hands out the mandate numbers and withdraws one only on its own evidence: p+1 ticks without a valid order, or a cession. Two machines that disagree cannot both command.",
+          "requirements": [
+            "CMD-01",
+            "CMD-02",
+            "CMD-03",
+            "MAN-01"
+          ],
+          "docs": [
+            "docs/SPEC.md",
+            "docs/PAPER.md"
+          ],
+          "code": [
+            "core/src/arbiter.c",
+            "core/include/relais/arbiter.h"
+          ],
+          "proof": "make explore"
+        },
+        {
+          "title": "Exactly one value per tick",
+          "summary": "The order of the holder, else the shadow of the second certified machine, else the testament, else the fallback law: one decision per tick, and the precedence is written down.",
+          "requirements": [
+            "CMD-05",
+            "CMD-06",
+            "DEG-01"
+          ],
+          "docs": [
+            "docs/TRUTH-TABLE.md"
+          ],
+          "code": [
+            "core/src/control.c"
+          ],
+          "proof": "make test"
+        },
+        {
+          "title": "A dissimilar second opinion",
+          "summary": "The second certified machine is allowed to disagree with the holder within a declared tolerance; the tolerance is declared, not implicit, and off by default.",
+          "requirements": [
+            "DEG-08"
+          ],
+          "docs": [
+            "docs/TRUTH-TABLE.md",
+            "docs/DEBT.md"
+          ],
+          "code": [
+            "core/src/arbiter.c"
+          ],
+          "proof": "make test"
+        },
+        {
+          "title": "The plant model, integrated exactly",
+          "summary": "The actuator integrates the steering model step by step; the simulator, the explorer and the tests share the same code, so a proof is a proof of the shipped behaviour.",
+          "requirements": [
+            "MAN-08"
+          ],
+          "docs": [
+            "docs/RESULTS.md"
+          ],
+          "code": [
+            "core/src/plant.c"
+          ],
+          "proof": "make campaign"
+        },
+        {
+          "title": "The will (testament)",
+          "summary": "Every order carries the values expected for the next N ticks; during a handover the actuator plays the departed holder's plan, so the physical curve shows no hole.",
+          "requirements": [
+            "CMD-07",
+            "ACT-01"
+          ],
+          "docs": [
+            "docs/SAFETY.md"
+          ],
+          "code": [
+            "core/src/testament.c"
+          ],
+          "proof": "make test"
+        },
+        {
+          "title": "The journal is the evidence",
+          "summary": "Every tick is written as one JSON line, chained; the journal is what the replay, the dashboard and the report consume.",
+          "requirements": [
+            "OBS-05",
+            "OBS-07"
+          ],
+          "docs": [
+            "docs/PROTOCOL.md"
+          ],
+          "code": [
+            "core/src/journal.c",
+            "actuator/journal_writer.c"
+          ],
+          "proof": "make test"
+        },
+        {
+          "title": "A protocol reference at implementation level",
+          "summary": "Byte-by-byte wire format, trailer, tick labels and the exact order of the checks — the document a second implementation is written from.",
+          "requirements": [
+            "CMD-02"
+          ],
+          "docs": [
+            "docs/PROTOCOL.md"
+          ],
+          "code": [],
+          "proof": ""
+        },
+        {
+          "title": "The unit-test suite of the core",
+          "summary": "Fourteen suites that count every check they run — the number published on this page comes from them, not from an estimate.",
+          "requirements": [
+            "DET-03",
+            "DET-09"
+          ],
+          "docs": [
+            "docs/RESULTS.md"
+          ],
+          "code": [
+            "core/tests"
+          ],
+          "proof": "make test"
+        },
+        {
+          "title": "The PC actuator and the node",
+          "summary": "The same core driven on a PC: an actuator process, a node process, and one journal writer shared with the QNX build so the two cannot drift.",
+          "requirements": [
+            "OBS-05",
+            "MAN-09"
+          ],
+          "docs": [
+            "docs/PROTOCOL.md"
+          ],
+          "code": [
+            "actuator",
+            "host/node"
+          ],
+          "proof": "make demo"
+        }
+      ]
+    },
+    {
+      "id": "proofs",
+      "title": "Proofs — and proofs of the proofs",
+      "hook": "A claim is worth nothing without the machine that checked it. Every number below comes from a command you can run.",
+      "features": [
+        {
+          "title": "Exhaustive exploration of the core",
+          "summary": "A depth-first search over the whole reachable state space of the protocol core: 100 198 states, zero violation, in under a second.",
+          "requirements": [
+            "ROB-03",
+            "DET-03"
+          ],
+          "docs": [
+            "docs/RESULTS.md"
+          ],
+          "code": [
+            "host/explore/explore.c"
+          ],
+          "proof": "make explore"
+        },
+        {
+          "title": "Symbolic abstraction and minimal counter-examples",
+          "summary": "The explorer quotients the state space symbolically and shrinks a counter-example to the smallest sequence that still breaks an invariant.",
+          "requirements": [
+            "ROB-03"
+          ],
+          "docs": [],
+          "code": [
+            "host/explore/symbolic.c",
+            "host/explore/shrink.c"
+          ],
+          "proof": "make explore"
+        },
+        {
+          "title": "Non-interference and mined invariants",
+          "summary": "The machine A's choices cannot change what machine B may observe; the invariants are mined from the code, not written by hand.",
+          "requirements": [
+            "MAN-06"
+          ],
+          "docs": [],
+          "code": [
+            "host/verify/noninterference.c"
+          ],
+          "proof": "make noninterference"
+        },
+        {
+          "title": "Differential test C against Python",
+          "summary": "A second, independent arbiter is written in Python and confronted with the C core over hundreds of thousands of ticks; any divergence is a defect.",
+          "requirements": [
+            "DET-04"
+          ],
+          "docs": [],
+          "code": [
+            "host/difftest/arbiter_py.py",
+            "host/difftest/difftest.py"
+          ],
+          "proof": "python3 host/difftest/difftest.py"
+        },
+        {
+          "title": "Eight defective builds are killed",
+          "summary": "The bench is checked against mutants: eight deliberately broken versions of the core, and the bench must see every one of them.",
+          "requirements": [
+            "INJ-11"
+          ],
+          "docs": [
+            "docs/MUTATION-SCORE.md"
+          ],
+          "code": [
+            "host/mutants/run_mutants.py"
+          ],
+          "proof": "python3 host/mutants/run_mutants.py"
+        },
+        {
+          "title": "TLA+ models confronted with the code",
+          "summary": "The protocol and the control law are modelled in TLA+ and the model's states are compared with the implementation's.",
+          "requirements": [
+            "DET-09"
+          ],
+          "docs": [],
+          "code": [
+            "docs/tla"
+          ],
+          "proof": ""
+        },
+        {
+          "title": "The proofs at full scale",
+          "summary": "19 659 campaign runs, 10 million explored states, one billion simulated ticks — and the numbers are published with the command that reproduces each of them.",
+          "requirements": [
+            "REP-08"
+          ],
+          "docs": [
+            "docs/RESULTS.md"
+          ],
+          "code": [],
+          "proof": "make campaign"
+        },
+        {
+          "title": "A fault truth table",
+          "summary": "For every fault — death, freeze, cut, bad order, wrong tick, duplicated frame — the table says what the actuator does and why it is safe.",
+          "requirements": [
+            "ACT-02",
+            "ACT-03",
+            "DEG-05"
+          ],
+          "docs": [
+            "docs/TRUTH-TABLE.md"
+          ],
+          "code": [],
+          "proof": ""
+        }
+      ]
+    },
+    {
+      "id": "faults",
+      "title": "Faults — injected, adversarial, hostile",
+      "hook": "The bench is only as good as the faults it survives, so the faults are searched for, not hoped for.",
+      "features": [
+        {
+          "title": "The fault model of the simulator",
+          "summary": "Death, freeze, cut, delay, bad order and wrong tick, injected at a chosen tick, with a twin that runs without any fault to compare against.",
+          "requirements": [
+            "INJ-01",
+            "INJ-02"
+          ],
+          "docs": [
+            "docs/RESULTS.md"
+          ],
+          "code": [
+            "host/simulate/sim_faults.c"
+          ],
+          "proof": "make campaign"
+        },
+        {
+          "title": "The worst scenario is searched for",
+          "summary": "An evolutionary search with a simulated annealing phase looks for the fault sequence that hurts the most, under a budget in evaluations and in seconds.",
+          "requirements": [
+            "INJ-12"
+          ],
+          "docs": [],
+          "code": [
+            "host/optimize/optimize.c"
+          ],
+          "proof": "python3 host/optimize/optimize.py"
+        },
+        {
+          "title": "Bit-flips, one bit at a time",
+          "summary": "Single-bit and multi-bit corruptions are injected into frames, journal and state, and the core must reject or absorb every one of them.",
+          "requirements": [
+            "INJ-10"
+          ],
+          "docs": [
+            "docs/SAFETY.md"
+          ],
+          "code": [
+            "host/faultinject/bitflip.c"
+          ],
+          "proof": ""
+        },
+        {
+          "title": "Lifecycle and timing faults",
+          "summary": "Warm restart, watchdog, persistence loss and long stalls are faults too: the bench plays them and checks that the handover still happens.",
+          "requirements": [
+            "MAN-11"
+          ],
+          "docs": [],
+          "code": [
+            "host/faultlife/faultlife.c"
+          ],
+          "proof": ""
+        },
+        {
+          "title": "Byzantine frames and revocation",
+          "summary": "Forged orders, usurped status, stolen keys, replays and floods are played against the arbiter; the safe degraded mode is the expected answer, never a second winner.",
+          "requirements": [
+            "SEC-04"
+          ],
+          "docs": [],
+          "code": [
+            "host/byzantine/run_byzantine.c"
+          ],
+          "proof": ""
+        },
+        {
+          "title": "Fuzzing under the sanitizers",
+          "summary": "The frame, the arbiter and the journal parsers are fuzzed with ASan and UBSan; the surfaces an attacker would touch are the ones fuzzed.",
+          "requirements": [
+            "SEC-05"
+          ],
+          "docs": [],
+          "code": [
+            "host/fuzz"
+          ],
+          "proof": "make fuzz"
+        },
+        {
+          "title": "Ten fault scenarios, kept as data",
+          "summary": "Nominal slalom, death, freeze, cut, slow machine, double death, and a sweep over every phase of a handover: each scenario is a JSON file the campaign plays at both levels.",
+          "requirements": [
+            "INJ-01",
+            "INJ-05"
+          ],
+          "docs": [
+            "docs/RESULTS.md"
+          ],
+          "code": [
+            "scenarios"
+          ],
+          "proof": "make campaign"
+        }
+      ]
+    },
+    {
+      "id": "time",
+      "title": "Time — the argument the spec asks for",
+      "hook": "The protocol has no synchronised clock, so the temporal argument is made on bounds, not on timestamps.",
+      "features": [
+        {
+          "title": "WCET statistics and response-time analysis",
+          "summary": "Measured worst-case execution times per unit, the resulting response-time bound, and the margin left against the deadline.",
+          "requirements": [
+            "PERF-01",
+            "OBS-02"
+          ],
+          "docs": [
+            "docs/TIMING.md"
+          ],
+          "code": [
+            "host/timing/wcet.py",
+            "host/timing/rta.py"
+          ],
+          "proof": "python3 host/timing/rta.py"
+        },
+        {
+          "title": "The critical path is measured in microseconds",
+          "summary": "From the status received to the order emitted: a log-scale histogram without allocation, percentiles p50 to p99.9, published instead of promised.",
+          "requirements": [
+            "PERF-01",
+            "PERF-02"
+          ],
+          "docs": [],
+          "code": [
+            "host/measure/latency.c"
+          ],
+          "proof": ""
+        },
+        {
+          "title": "The actuator is the clock",
+          "summary": "It beats a tick every period and every order names the tick it targets; an order computed before a freeze is stale by construction.",
+          "requirements": [
+            "CMD-04",
+            "DET-04"
+          ],
+          "docs": [
+            "docs/PROTOCOL.md"
+          ],
+          "code": [],
+          "proof": ""
+        }
+      ]
+    },
+    {
+      "id": "security",
+      "title": "Security — keys, rotation, anti-replay",
+      "hook": "Authentication is assumed, everything beyond it is stated: what the design does not claim is written down too.",
+      "features": [
+        {
+          "title": "Key agreement and rotation in service",
+          "summary": "Keys are established at start-up and can be rotated while running, without any external library: C11 and libc only.",
+          "requirements": [
+            "SEC-07"
+          ],
+          "docs": [],
+          "code": [
+            "core/src/keys.c",
+            "core/include/relais/keys.h"
+          ],
+          "proof": ""
+        },
+        {
+          "title": "The journal is chained",
+          "summary": "Each line carries the hash of the previous one, so a removed or reordered line is detected, not just a corrupted one.",
+          "requirements": [
+            "SEC-06"
+          ],
+          "docs": [],
+          "code": [
+            "core/src/journal.c"
+          ],
+          "proof": ""
+        },
+        {
+          "title": "The security concept, and what it does not claim",
+          "summary": "The attacks considered, the ones explicitly out of scope, and the detection that is assumed rather than prevented.",
+          "requirements": [
+            "SEC-01"
+          ],
+          "docs": [
+            "docs/SAFETY.md"
+          ],
+          "code": [],
+          "proof": ""
+        }
+      ]
+    },
+    {
+      "id": "observability",
+      "title": "Observability — see what the machine did",
+      "hook": "The journal is the source of truth; everything here is a different way of reading it.",
+      "features": [
+        {
+          "title": "A standalone HTML campaign report",
+          "summary": "One self-contained HTML file, no server and no dependency, regenerated by the CI at every deploy.",
+          "requirements": [
+            "OBS-05"
+          ],
+          "docs": [],
+          "code": [
+            "host/report/report.py"
+          ],
+          "proof": "python3 host/report/report.py"
+        },
+        {
+          "title": "A live dashboard and an MCAP export",
+          "summary": "A read-only dashboard follows the journal live — mandate, holder, command source, witness lamp, curves — and the same run is exported to MCAP for any standard viewer.",
+          "requirements": [
+            "OBS-06",
+            "OBS-08"
+          ],
+          "docs": [],
+          "code": [
+            "host/dashboard/serve.py",
+            "host/export/mcap_writer.py"
+          ],
+          "proof": ""
+        },
+        {
+          "title": "An event recorder and a deterministic replay",
+          "summary": "Every handover is recorded as an event with its margins, and the same events are replayed deterministically to compare two runs.",
+          "requirements": [
+            "OBS-07"
+          ],
+          "docs": [],
+          "code": [
+            "host/edr/edr.py",
+            "host/replay/replay.py"
+          ],
+          "proof": ""
+        },
+        {
+          "title": "A timeline with margins",
+          "summary": "The handover is drawn as a timeline — who commanded, when the mandate changed, how much margin was left.",
+          "requirements": [
+            "OBS-03"
+          ],
+          "docs": [],
+          "code": [
+            "host/observability-timeline/timeline.py"
+          ],
+          "proof": ""
+        }
+      ]
+    },
+    {
+      "id": "deployment",
+      "title": "Deployment — from zero to two boards",
+      "hook": "The claim is that the proof bench is reproducible by someone else. Here is the path, with the exact commands.",
+      "features": [
+        {
+          "title": "QNX 8.0 bring-up pack",
+          "summary": "From a bare workstation to two QNX guests: SDP detection, the build recipe, the image, the network setup and the six experiments to run.",
+          "requirements": [
+            "QNX-01",
+            "QNX-02"
+          ],
+          "docs": [
+            "docs/QNX-BRINGUP.md"
+          ],
+          "code": [
+            "host/bench/qnx_build.sh",
+            "host/bench/qnx_env.py"
+          ],
+          "proof": "python3 host/bench/qnx_env.py"
+        },
+        {
+          "title": "The QNX lifecycle: persistence, warm restart, hypervisor, bus",
+          "summary": "What survives a reboot, how a warm restart is supervised, what changes under a hypervisor, and what a real-time bus would change.",
+          "requirements": [
+            "ACT-05",
+            "ACT-08",
+            "QNX-03"
+          ],
+          "docs": [
+            "docs/HYPERVISOR.md",
+            "docs/BUS-COMPARISON.md"
+          ],
+          "code": [
+            "target/persist.c"
+          ],
+          "proof": "make -C target syntax"
+        },
+        {
+          "title": "Rolling update without interruption",
+          "summary": "One of the two computers is replaced while the other keeps commanding: no tick is left without a fresh order.",
+          "requirements": [
+            "REL-10"
+          ],
+          "docs": [
+            "docs/OTA.md"
+          ],
+          "code": [
+            "host/bench/rolling_update.py",
+            "scenarios/rolling-update.json"
+          ],
+          "proof": "make test"
+        },
+        {
+          "title": "Two real boards over Ethernet",
+          "summary": "The protocol on two physical boards, with the commands to wire them and the measurements taken from the wire.",
+          "requirements": [
+            "REP-05",
+            "INJ-05"
+          ],
+          "docs": [
+            "docs/TWO-BOARDS.md"
+          ],
+          "code": [],
+          "proof": ""
+        },
+        {
+          "title": "A real QNX guest, frozen by QMP",
+          "summary": "One of the two computers is a QEMU guest running QNX, frozen through QMP: the bench stops being a simulation of a freeze.",
+          "requirements": [
+            "INJ-07"
+          ],
+          "docs": [],
+          "code": [
+            "host/bench"
+          ],
+          "proof": "make demo"
+        },
+        {
+          "title": "Reproduce it in one container",
+          "summary": "A devcontainer and a bootstrap script bring the whole bench up on a machine that has never seen it.",
+          "requirements": [
+            "REP-01",
+            "REP-05"
+          ],
+          "docs": [
+            "docs/REPRODUCE.md"
+          ],
+          "code": [
+            ".devcontainer/Dockerfile",
+            "tools/bootstrap.sh"
+          ],
+          "proof": "bash tools/bootstrap.sh"
+        },
+        {
+          "title": "Other RTOS, another language, other transports",
+          "summary": "The core is ported to Zephyr and FreeRTOS, bound from Rust, and driven over transports other than the reference one.",
+          "requirements": [
+            "QNX-09"
+          ],
+          "docs": [],
+          "code": [
+            "ports",
+            "transports"
+          ],
+          "proof": "make -C ports/zephyr check"
+        },
+        {
+          "title": "The five QNX processes",
+          "summary": "Actuator, node, control, net and ctl as real QNX processes, with the stubs that let them build on a PC and the image fragments that put them on a board.",
+          "requirements": [
+            "QNX-02",
+            "QNX-04"
+          ],
+          "docs": [
+            "docs/QNX-BRINGUP.md"
+          ],
+          "code": [
+            "target"
+          ],
+          "proof": "make -C target syntax"
+        }
+      ]
+    },
+    {
+      "id": "quality",
+      "title": "Quality — coverage, static analysis, safety case",
+      "hook": "The numbers a jury checks first: what is covered, what is analysed, what is declared as debt.",
+      "features": [
+        {
+          "title": "Branch coverage, static analysis, reproducible build, SBOM",
+          "summary": "Coverage measured on the branches, a static analysis gate, a bit-for-bit reproducible build and a software bill of materials.",
+          "requirements": [
+            "REL-09",
+            "MAN-06"
+          ],
+          "docs": [
+            "docs/COVERAGE.md",
+            "docs/QUALITY.md"
+          ],
+          "code": [
+            "host/quality/coverage_driver.py",
+            "host/quality/sbom.py"
+          ],
+          "proof": "make coverage"
+        },
+        {
+          "title": "A generated FMEA and a fault tree",
+          "summary": "The failure modes and their criticality are generated from the code and the scenarios, and the safety case links each to its argument.",
+          "requirements": [
+            "ACT-02",
+            "ACT-03"
+          ],
+          "docs": [
+            "docs/SAFETY-CASE.md"
+          ],
+          "code": [
+            "host/safety"
+          ],
+          "proof": ""
+        },
+        {
+          "title": "The decisions log and the declared debt",
+          "summary": "Every design decision with its reason, and every piece of technical debt we assume on purpose, written down.",
+          "requirements": [
+            "ACT-10"
+          ],
+          "docs": [
+            "docs/DECISIONS.md",
+            "docs/DEBT.md"
+          ],
+          "code": [],
+          "proof": ""
+        },
+        {
+          "title": "Nightly proofs at full scale",
+          "summary": "Every night the full campaign runs, the mutation score is recomputed and the results are published, so a regression cannot hide.",
+          "requirements": [
+            "INJ-08",
+            "ROB-06"
+          ],
+          "docs": [],
+          "code": [
+            "host/nightly"
+          ],
+          "proof": "make nightly"
+        },
+        {
+          "title": "The CI that guards all of it",
+          "summary": "Eleven workflows, each with a five-minute budget: the build and the tests, the scope guard, the static analysis, the reproducible build, the nightly proofs and this page.",
+          "requirements": [
+            "REP-06"
+          ],
+          "docs": [
+            "docs/QUALITY.md",
+            "docs/REPRODUCE.md"
+          ],
+          "code": [
+            ".github/workflows"
+          ],
+          "proof": ""
+        }
+      ]
+    },
+    {
+      "id": "command",
+      "title": "Command — the control law under stress",
+      "hook": "The law that drives the wheel is studied like any other component: sensitivity, infeasible targets, and the law that takes over.",
+      "features": [
+        {
+          "title": "Braking profiles, played for real",
+          "summary": "Nominal braking, the holder dying mid-brake, a freeze and a cut: the profile is played and the deviation from the deceleration is published.",
+          "requirements": [
+            "ACT-09"
+          ],
+          "docs": [],
+          "code": [
+            "host/study"
+          ],
+          "proof": ""
+        },
+        {
+          "title": "An impossible setpoint",
+          "summary": "A command the actuator physically cannot follow: the protocol must still hold its bounds instead of chasing the impossible.",
+          "requirements": [
+            "MAN-10"
+          ],
+          "docs": [],
+          "code": [
+            "host/study/infeasible.py"
+          ],
+          "proof": ""
+        },
+        {
+          "title": "A faithful plant, as an option",
+          "summary": "A higher-fidelity plant model with an observer, available as a variant — the published campaign keeps the default model bit for bit.",
+          "requirements": [
+            "MAN-08"
+          ],
+          "docs": [],
+          "code": [
+            "host/physics"
+          ],
+          "proof": ""
+        }
+      ]
+    },
+    {
+      "id": "docs",
+      "title": "Documents — what a jury reads",
+      "hook": "The specification, the argument, the talk and the lab: the same content in the forms a reviewer asks for.",
+      "features": [
+        {
+          "title": "The specification (three parts)",
+          "summary": "Sections 1 to 8, sections 5 to 8 again in detail, and the annex covering the QNX-specific points.",
+          "requirements": [
+            "ACT-01"
+          ],
+          "docs": [
+            "docs/SPEC.md",
+            "docs/SPEC-2.md",
+            "docs/SPEC-ANNEX.md"
+          ],
+          "code": [],
+          "proof": ""
+        },
+        {
+          "title": "The paper: why the actuator must be the arbiter",
+          "summary": "The argument in written form — the dilemma, the four ideas that solve it, and the limits stated up front.",
+          "requirements": [
+            "ACT-01"
+          ],
+          "docs": [
+            "docs/PAPER.md"
+          ],
+          "code": [],
+          "proof": ""
+        },
+        {
+          "title": "The 45-minute talk",
+          "summary": "A conference or workshop talk that stands on its own, with the figures and the demos it refers to.",
+          "requirements": [
+            "ACT-10"
+          ],
+          "docs": [
+            "docs/TALK.md"
+          ],
+          "code": [],
+          "proof": ""
+        },
+        {
+          "title": "The comparison with neighbouring projects",
+          "summary": "What the other approaches do, what they cost, and where this one is genuinely different.",
+          "requirements": [
+            "PERF-09"
+          ],
+          "docs": [
+            "docs/COMPARISON.md"
+          ],
+          "code": [],
+          "proof": ""
+        },
+        {
+          "title": "The submission notes",
+          "summary": "Each rule of the hackathon, and the pointer to the artefact that answers it.",
+          "requirements": [
+            "INJ-06",
+            "OBS-02"
+          ],
+          "docs": [
+            "docs/SUBMISSION.md"
+          ],
+          "code": [],
+          "proof": ""
+        },
+        {
+          "title": "A three-hour lab",
+          "summary": "A hands-on tutorial: build it, break it, read the journal, prove something about it.",
+          "requirements": [
+            "REP-04"
+          ],
+          "docs": [
+            "codelab/TP-3h.md",
+            "codelab/README.md"
+          ],
+          "code": [],
+          "proof": ""
+        },
+        {
+          "title": "The open questions",
+          "summary": "What is still unanswered, stated as questions rather than as promises.",
+          "requirements": [
+            "DET-10"
+          ],
+          "docs": [
+            "docs/OPEN-QUESTIONS.md"
+          ],
+          "code": [],
+          "proof": ""
+        },
+        {
+          "title": "The specification in French",
+          "summary": "The same contract, for the readers who would rather have it in the language of the classroom.",
+          "requirements": [
+            "ACT-01"
+          ],
+          "docs": [
+            "docs/spec-fr.md"
+          ],
+          "code": [],
+          "proof": ""
+        }
+      ]
+    }
+  ]
+}
