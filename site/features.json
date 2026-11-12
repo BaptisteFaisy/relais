@@ -726,6 +726,22 @@
             "docs/figures/qnx-guest"
           ],
           "proof": "make qnx-proof"
+        },
+        {
+          "title": "The protocol, killed and handed over inside QNX 8.0",
+          "summary": "The real actuator and node ran in a QNX 8.0 guest under KVM; the holder was SIGKILLed from inside the guest and the actuator revoked the mandate on its own evidence after p+1 misses, at tick 608, with the takeover detected 23 ms later and 0 violation over 1200 ticks.",
+          "requirements": [
+            "QNX-01",
+            "MAN-01",
+            "INJ-01"
+          ],
+          "docs": [],
+          "code": [
+            "host/bench/qnx_relais.py",
+            "image/fragments/rl-relais-failover.sh",
+            "docs/evidence/qnx-m48-relais.json"
+          ],
+          "proof": "make qnx-relais"
         }
       ]
     },
