@@ -1,0 +1,703 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Relais — bounded-latency failover between two QNX computers</title>
+<meta name="description" content="Two QNX 8.0 computers steer the same actuator. The actuator is the arbiter and the clock: it never applies the order of a deposed machine.">
+<style>
+:root{--ink:#16202b;--mut:#5b6b7c;--line:#dde4ea;--acc:#0b6bcb;--ok:#0a7d43;--warn:#b26a00;--bg:#f6f8fa}
+*{box-sizing:border-box}
+body{margin:0;font:16px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;color:var(--ink);background:#fff}
+.wrap{max-width:960px;margin:0 auto;padding:0 20px}
+header{background:linear-gradient(180deg,#0d1b2a,#13293d);color:#fff;padding:56px 0 44px}
+header h1{margin:0 0 8px;font-size:38px;letter-spacing:-.5px}
+header .tag{color:#9fd0ff;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:13px;text-transform:uppercase;letter-spacing:.12em}
+header p.lead{font-size:20px;max-width:44em;color:#dce7f2;margin:14px 0 0}
+.badges{margin-top:22px;display:flex;gap:8px;flex-wrap:wrap}
+.badge{background:#1d3b57;border:1px solid #2d5a80;color:#cfe4f7;border-radius:999px;padding:4px 12px;font-size:13px}
+h2{font-size:26px;margin:44px 0 10px;letter-spacing:-.2px}
+h3{font-size:18px;margin:26px 0 6px}
+p{margin:10px 0}
+code,pre{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:13.5px}
+pre{background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:14px;overflow-x:auto}
+table{border-collapse:collapse;width:100%;margin:14px 0;font-size:15px}
+th,td{border:1px solid var(--line);padding:8px 10px;text-align:left;vertical-align:top}
+th{background:var(--bg);font-weight:600}
+td.ok{color:var(--ok);font-weight:600}
+.grid{display:grid;gap:16px}
+.g2{grid-template-columns:1fr 1fr}
+@media(max-width:760px){.g2{grid-template-columns:1fr}}
+figure{margin:0;border:1px solid var(--line);border-radius:8px;overflow:hidden;background:#000}
+figure img{display:block;width:100%;height:auto}
+figcaption{background:var(--bg);color:var(--mut);font-size:13.5px;padding:8px 10px;border-top:1px solid var(--line)}
+.card{border:1px solid var(--line);border-radius:10px;padding:16px 18px;background:#fff}
+.card h3{margin-top:0}
+.num{font-size:30px;font-weight:700;color:var(--acc);line-height:1.1}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin:18px 0}
+.kpi{border:1px solid var(--line);border-radius:10px;padding:14px}
+.kpi small{color:var(--mut);display:block;margin-top:4px;font-size:13px}
+a{color:var(--acc)}
+.note{border-left:4px solid var(--warn);background:#fff8ec;padding:12px 14px;border-radius:0 8px 8px 0;margin:18px 0}
+footer{border-top:1px solid var(--line);color:var(--mut);font-size:14px;padding:26px 0 46px;margin-top:50px}
+.arch{background:#0d1b2a;color:#cfe4f7;border-radius:8px;padding:16px;overflow-x:auto}
+.arch pre{background:none;border:0;color:inherit;padding:0;margin:0}
+/* Feature catalogue, generated at deploy time by site/build_features.py */
+.toc{background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:10px 14px;margin:16px 0}
+.toc-title{margin:0;font-size:11.5px;text-transform:uppercase;letter-spacing:.1em;color:var(--mut)}
+.toc p+p{margin:6px 0 0;font-size:14px;line-height:1.9}
+.theme{margin:30px 0 6px}
+.theme h3{margin:0 0 2px;font-size:19px}
+.hook{color:var(--mut);max-width:56em;margin:4px 0 12px}
+.feature{border:1px solid var(--line);border-radius:10px;padding:13px 15px;background:#fff}
+.feature h4{margin:0 0 5px;font-size:15.5px}
+.feature p{margin:6px 0}
+.reqrow{display:flex;gap:5px;flex-wrap:wrap;margin:8px 0 4px}
+.req{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11.5px;background:#eef5fd;border:1px solid #cfe4f7;color:#0b4f96;border-radius:999px;padding:1px 8px}
+.proof{color:var(--mut);font-size:13px}
+.paths{font-size:12.5px;color:var(--mut);word-break:break-word}
+table.discovered td.num{text-align:right;white-space:nowrap;color:var(--mut)}
+</style>
+</head>
+<body>
+<header><div class="wrap">
+  <div class="tag">QNX Global Hackathon 2026 · Automotive &amp; Mobility</div>
+  <h1>Relais</h1>
+  <p class="lead">Two computers steer the same actuator. <strong>Only one commands.</strong> When it dies, freezes or loses its cable, the other takes over within a bounded, measured delay — and the machine that was evicted can never impose anything again, even if it wakes up believing it is still in charge.</p>
+  <div class="badges">
+    <span class="badge">Apache-2.0</span><span class="badge">C11 core, no clock · no file · no socket · no malloc</span>
+    <span class="badge">QNX 8.0 target</span><span class="badge">runs on a plain PC, no root</span>
+  </div>
+</div></header>
+
+<div class="wrap">
+
+<h2>The problem</h2>
+<p>Without a steering column, an assistance computer that goes silent leaves the wheels without a command. With nobody holding the wheel, nobody can take over within the second. <em>Silence is no longer a safe state.</em> Doubling the computer moves the difficulty to one question: <strong>who commands, and how do you change hands without a bump and without two masters?</strong></p>
+<p>The usual answer is a heartbeat and a timeout. The timeout is a guess: too short and you depose a healthy machine that was merely late; too long and the actuator stays without a command. Two neighbouring QNX projects on GitHub picked 100&nbsp;ms and 2&nbsp;000&nbsp;ms. Relais targets two periods — 10&nbsp;ms at 200&nbsp;Hz — and, more importantly, does not have to guess.</p>
+
+<h2>Four ideas that carry it</h2>
+<div class="grid g2">
+  <div class="card"><h3>1 · The actuator is the arbiter</h3><p>It hands out mandate numbers and withdraws one <em>only on its own evidence</em>: p+1 consecutive ticks without a valid order from the holder, or a cession from it. Two machines that no longer agree therefore cannot both command. The "is it dead or is the cable cut?" dilemma is settled without a third computer.</p></div>
+  <div class="card"><h3>2 · The actuator is the clock</h3><p>It beats a tick every period and every order names the tick it targets. No clock is synchronised between the machines, and an order computed before a freeze is stale <em>by construction</em>.</p></div>
+  <div class="card"><h3>3 · The will (testament)</h3><p>Every order carries the values expected for the next N ticks. During a handover the actuator plays the departed holder's plan, so the physical curve shows no hole.</p></div>
+  <div class="card"><h3>4 · Proof by exploration — and proof of the proof</h3><p>The protocol core is a pure state machine, explored exhaustively on a PC, then killed, frozen and unplugged for real. Eight deliberately defective builds (mutants) check that the bench actually sees faults.</p></div>
+</div>
+
+<h2>Architecture</h2>
+<div class="arch"><pre>
+              PC Linux, no root required
+   ┌──────────────┐   link between computers   ┌──────────────┐
+   │   machine A  │◄─────────►┌──────────┐◄───►│   machine B  │
+   │   holder     │           │programmable│    │   second     │
+   └──────┬───────┘           │   cable   │    └───────┬──────┘
+          │                   └──────────┘            │
+          ▼                                           ▼
+   ┌──────────────────────────────────────────────────────────┐
+   │  actuator: arbiter + rack model + tempo + the journal     │
+   └───────────────────────────┬──────────────────────────────┘
+                               ▼
+        orchestrator ──► QMP: stop, cont, quit, set_link
+                     └─► invariant verifier ──► report
+</pre></div>
+<p>Each computer is three isolated processes at fixed priorities: <code>relais-net</code> (62, the only one with a socket), <code>relais-core</code> (61, the resource manager <code>/dev/relais</code> and the protocol state machine), <code>relais-ctl</code> (60, the control law as a service). A crash is <em>known</em>, not guessed: peers see the connection close and the machine cedes the mandate within the tick.</p>
+
+<h2>Measured, not asserted</h2>
+<div class="kpis">
+  <div class="kpi"><div class="num">10 000 330</div><small>states explored exhaustively, two simultaneous faults, 51 s — <strong>0 violation</strong></small></div>
+  <div class="kpi"><div class="num">19 659</div><small>simulated fault runs: swept deaths, freezes up to 8 s, cut links, forged and stale frames — <strong>0 failure</strong></small></div>
+  <div class="kpi"><div class="num">1 000 000 000</div><small>ticks simulated at level C — <strong>0 violation</strong>, worst gap 0</small></div>
+  <div class="kpi"><div class="num">8 / 8</div><small>mutants flagged, each by the invariant it was meant to break</small></div>
+  <div class="kpi"><div class="num">5 651</div><small>unit and protocol checks green</small></div>
+  <div class="kpi"><div class="num">0</div><small>tick without a fresh order during a handover, level C</small></div>
+</div>
+<table>
+<tr><th>Guarantee</th><th>Base level (S)</th><th>Full level (C)</th></tr>
+<tr><td>Gap between two fresh orders after the holder dies</td><td class="ok">≤ 3 periods = 15 ms at 200 Hz, bridged by the will (measured: 1 tick)</td><td class="ok">zero — the certified second's shadow substitutes from the first miss</td></tr>
+<tr><td>Double command</td><td class="ok">impossible by construction, then explored exhaustively</td><td class="ok">same, plus order-vs-shadow comparison flags a miscomputing machine</td></tr>
+<tr><td>The revenant (frozen then thawed)</td><td class="ok">its stale orders are dropped twice over: wrong holder, wrong tick</td><td class="ok">same; it rejoins as a second without disturbing the command</td></tr>
+<tr><td>Both machines gone</td><td class="ok">the will plays out, then the fallback law within N+1 ticks</td><td class="ok">same, red lamp and stop requested</td></tr>
+</table>
+<p><a href="report.html">→ the campaign report, regenerated by the CI at every deploy</a> · <a href="dashboard.html">→ the live dashboard (offline replay)</a> · <a href="https://github.com/BaptisteFaisy/relais/blob/main/docs/RESULTS.md">all the numbers and how to reproduce them</a></p>
+
+<h2 id="features">Every feature, in one page</h2>
+<p>65 capabilities in 10 themes, plus 25 items discovered in the tree. Each card names the requirements it answers, the document that argues it, the code that implements it, and the command that reproduces the number.</p>
+<nav class="toc"><p class="toc-title">Jump to</p><p><a href="#core">The core — one C11 library, three builds</a> · <a href="#proofs">Proofs — and proofs of the proofs</a> · <a href="#faults">Faults — injected, adversarial, hostile</a> · <a href="#time">Time — the argument the spec asks for</a> · <a href="#security">Security — keys, rotation, anti-replay</a> · <a href="#observability">Observability — see what the machine did</a> · <a href="#deployment">Deployment — from zero to two boards</a> · <a href="#quality">Quality — coverage, static analysis, safety case</a> · <a href="#command">Command — the control law under stress</a> · <a href="#docs">Documents — what a jury reads</a></p></nav>
+<section class="theme" id="core">
+<h3>The core — one C11 library, three builds</h3>
+<p class="hook">No clock, no file, no socket, no allocation: the same source is the QNX process, the simulator and the explorer.</p>
+<div class="grid g2">
+<article class="feature">
+<h4>Frames: CRC-32C and a keyed MAC</h4>
+<p>Every frame carries a checksum and a SipHash-2-4 tag; a forged or corrupted frame is rejected before it reaches the arbiter.</p>
+<p class="reqrow"><span class="req">SEC-01</span><span class="req">SEC-02</span></p>
+<p class="proof">reproduce: <code>make test</code></p><p class="paths"><a href="https://github.com/BaptisteFaisy/relais/blob/main/docs/PROTOCOL.md">docs/PROTOCOL.md</a> · <a href="https://github.com/BaptisteFaisy/relais/blob/main/core/src/check.c">core/src/check.c</a> · <a href="https://github.com/BaptisteFaisy/relais/blob/main/core/include/relais/check.h">core/include/relais/check.h</a></p>
+</article>
+<article class="feature">
+<h4>The actuator is the arbiter</h4>
+<p>It hands out the mandate numbers and withdraws one only on its own evidence: p+1 ticks without a valid order, or a cession. Two machines that disagree cannot both command.</p>
+<p class="reqrow"><span class="req">CMD-01</span><span class="req">CMD-02</span><span class="req">CMD-03</span><span class="req">MAN-01</span></p>
+<p class="proof">reproduce: <code>make explore</code></p><p class="paths"><a href="https://github.com/BaptisteFaisy/relais/blob/main/docs/SPEC.md">docs/SPEC.md</a> · <a href="https://github.com/BaptisteFaisy/relais/blob/main/docs/PAPER.md">docs/PAPER.md</a> · <a href="https://github.com/BaptisteFaisy/relais/blob/main/core/src/arbiter.c">core/src/arbiter.c</a> · <a href="https://github.com/BaptisteFaisy/relais/blob/main/core/include/relais/arbiter.h">core/include/relais/arbiter.h</a></p>
+</article>
+<article class="feature">
+<h4>Exactly one value per tick</h4>
+<p>The order of the holder, else the shadow of the second certified machine, else the testament, else the fallback law: one decision per tick, and the precedence is written down.</p>
+<p class="reqrow"><span class="req">CMD-05</span><span class="req">CMD-06</span><span class="req">DEG-01</span></p>
+<p class="proof">reproduce: <code>make test</code></p><p class="paths"><a href="https://github.com/BaptisteFaisy/relais/blob/main/docs/TRUTH-TABLE.md">docs/TRUTH-TABLE.md</a> · <a href="https://github.com/BaptisteFaisy/relais/blob/main/core/src/control.c">core/src/control.c</a></p>
+</article>
+<article class="feature">
+<h4>A dissimilar second opinion</h4>
+<p>The second certified machine is allowed to disagree with the holder within a declared tolerance; the tolerance is declared, not implicit, and off by default.</p>
+<p class="reqrow"><span class="req">DEG-08</span></p>
+<p class="proof">reproduce: <code>make test</code></p><p class="paths"><a href="https://github.com/BaptisteFaisy/relais/blob/main/docs/TRUTH-TABLE.md">docs/TRUTH-TABLE.md</a> · <a href="https://github.com/BaptisteFaisy/relais/blob/main/docs/DEBT.md">docs/DEBT.md</a> · <a href="https://github.com/BaptisteFaisy/relais/blob/main/core/src/arbiter.c">core/src/arbiter.c</a></p>
+</article>
+<article class="feature">
+<h4>The plant model, integrated exactly</h4>
+<p>The actuator integrates the steering model step by step; the simulator, the explorer and the tests share the same code, so a proof is a proof of the shipped behaviour.</p>
+<p class="reqrow"><span class="req">MAN-08</span></p>
+<p class="proof">reproduce: <code>make campaign</code></p><p class="paths"><a href="https://github.com/BaptisteFaisy/relais/blob/main/docs/RESULTS.md">docs/RESULTS.md</a> · <a href="https://github.com/BaptisteFaisy/relais/blob/main/core/src/plant.c">core/src/plant.c</a></p>
+</article>
+<article class="feature">
+<h4>The will (testament)</h4>
+<p>Every order carries the values expected for the next N ticks; during a handover the actuator plays the departed holder&#x27;s plan, so the physical curve shows no hole.</p>
+<p class="reqrow"><span class="req">CMD-07</span><span class="req">ACT-01</span></p>
+<p class="proof">reproduce: <code>make test</code></p><p class="paths"><a href="https://github.com/BaptisteFaisy/relais/blob/main/docs/SAFETY.md">docs/SAFETY.md</a></p>
+</article>
+<article class="feature">
+<h4>The journal is the evidence</h4>
+<p>Every tick is written as one JSON line, chained; the journal is what the replay, the dashboard and the report consume.</p>
+<p class="reqrow"><span class="req">OBS-05</span><span class="req">OBS-07</span></p>
+<p class="proof">reproduce: <code>make test</code></p><p class="paths"><a href="https://github.com/BaptisteFaisy/relais/blob/main/docs/PROTOCOL.md">docs/PROTOCOL.md</a> · <a href="https://github.com/BaptisteFaisy/relais/blob/main/core/src/journal.c">core/src/journal.c</a> · <a href="https://github.com/BaptisteFaisy/relais/blob/main/actuator/journal_writer.c">actuator/journal_writer.c</a></p>
+</article>
+<article class="feature">
+<h4>A protocol reference at implementation level</h4>
+<p>Byte-by-byte wire format, trailer, tick labels and the exact order of the checks — the document a second implementation is written from.</p>
+<p class="reqrow"><span class="req">CMD-02</span></p>
+<p class="paths"><a href="https://github.com/BaptisteFaisy/relais/blob/main/docs/PROTOCOL.md">docs/PROTOCOL.md</a></p>
+</article>
+<article class="feature">
+<h4>The unit-test suite of the core</h4>
+<p>Fourteen suites that count every check they run — the number published on this page comes from them, not from an estimate.</p>
+<p class="reqrow"><span class="req">DET-03</span><span class="req">DET-09</span></p>
+<p class="proof">reproduce: <code>make test</code></p><p class="paths"><a href="https://github.com/BaptisteFaisy/relais/blob/main/docs/RESULTS.md">docs/RESULTS.md</a> · <a href="https://github.com/BaptisteFaisy/relais/tree/main/core/tests">core/tests</a></p>
+</article>
+<article class="feature">
+<h4>The PC actuator and the node</h4>
+<p>The same core driven on a PC: an actuator process, a node process, and one journal writer shared with the QNX build so the two cannot drift.</p>
+<p class="reqrow"><span class="req">OBS-05</span><span class="req">MAN-09</span></p>
+<p class="proof">reproduce: <code>make demo</code></p><p class="paths"><a href="https://github.com/BaptisteFaisy/relais/blob/main/docs/PROTOCOL.md">docs/PROTOCOL.md</a> · <a href="https://github.com/BaptisteFaisy/relais/tree/main/actuator">actuator</a> · <a href="https://github.com/BaptisteFaisy/relais/tree/main/host/node">host/node</a></p>
+</article>
+</div>
+</section>
+<section class="theme" id="proofs">
+<h3>Proofs — and proofs of the proofs</h3>
+<p class="hook">A claim is worth nothing without the machine that checked it. Every number below comes from a command you can run.</p>
+<div class="grid g2">
+<article class="feature">
+<h4>Exhaustive exploration of the core</h4>
+<p>A depth-first search over the whole reachable state space of the protocol core: 100 198 states, zero violation, in under a second.</p>
+<p class="reqrow"><span class="req">ROB-03</span><span class="req">DET-03</span></p>
+<p class="proof">reproduce: <code>make explore</code></p><p class="paths"><a href="https://github.com/BaptisteFaisy/relais/blob/main/docs/RESULTS.md">docs/RESULTS.md</a> · <a href="https://github.com/BaptisteFaisy/relais/blob/main/host/explore/explore.c">host/explore/explore.c</a></p>
+</article>
+<article class="feature">
+<h4>Symbolic abstraction and minimal counter-examples</h4>
+<p>The explorer quotients the state space symbolically and shrinks a counter-example to the smallest sequence that still breaks an invariant.</p>
+<p class="reqrow"><span class="req">ROB-03</span></p>
+<p class="proof">reproduce: <code>make explore</code></p><p class="paths"><a href="https://github.com/BaptisteFaisy/relais/blob/main/host/explore/symbolic.c">host/explore/symbolic.c</a> · <a href="https://github.com/BaptisteFaisy/relais/blob/main/host/explore/shrink.c">host/explore/shrink.c</a></p>
+</article>
+<article class="feature">
+<h4>Non-interference and mined invariants</h4>
+<p>The machine A&#x27;s choices cannot change what machine B may observe; the invariants are mined from the code, not written by hand.</p>
+<p class="reqrow"><span class="req">MAN-06</span></p>
+<p class="proof">reproduce: <code>make noninterference</code></p><p class="paths"><a href="https://github.com/BaptisteFaisy/relais/blob/main/host/verify/noninterference.c">host/verify/noninterference.c</a></p>
+</article>
+<article class="feature">
+<h4>Differential test C against Python</h4>
+<p>A second, independent arbiter is written in Python and confronted with the C core over hundreds of thousands of ticks; any divergence is a defect.</p>
+<p class="reqrow"><span class="req">DET-04</span></p>
+<p class="proof">reproduce: <code>python3 host/difftest/difftest.py</code></p><p class="paths"><a href="https://github.com/BaptisteFaisy/relais/blob/main/host/difftest/arbiter_py.py">host/difftest/arbiter_py.py</a> · <a href="https://github.com/BaptisteFaisy/relais/blob/main/host/difftest/difftest.py">host/difftest/difftest.py</a></p>
+</article>
+<article class="feature">
+<h4>Eight defective builds are killed</h4>
+<p>The bench is checked against mutants: eight deliberately broken versions of the core, and the bench must see every one of them.</p>
+<p class="reqrow"><span class="req">INJ-11</span></p>
+<p class="proof">reproduce: <code>python3 host/mutants/run_mutants.py</code></p><p class="paths"><a href="https://github.com/BaptisteFaisy/relais/blob/main/docs/MUTATION-SCORE.md">docs/MUTATION-SCORE.md</a> · <a href="https://github.com/BaptisteFaisy/relais/blob/main/host/mutants/run_mutants.py">host/mutants/run_mutants.py</a></p>
+</article>
+<article class="feature">
+<h4>TLA+ models confronted with the code</h4>
+<p>The protocol and the control law are modelled in TLA+ and the model&#x27;s states are compared with the implementation&#x27;s.</p>
+<p class="reqrow"><span class="req">DET-09</span></p>
+<p class="paths"><a href="https://github.com/BaptisteFaisy/relais/tree/main/docs/tla">docs/tla</a></p>
+</article>
+<article class="feature">
+<h4>The proofs at full scale</h4>
+<p>19 659 campaign runs, 10 million explored states, one billion simulated ticks — and the numbers are published with the command that reproduces each of them.</p>
+<p class="reqrow"><span class="req">REP-08</span></p>
+<p class="proof">reproduce: <code>make campaign</code></p><p class="paths"><a href="https://github.com/BaptisteFaisy/relais/blob/main/docs/RESULTS.md">docs/RESULTS.md</a></p>
+</article>
+<article class="feature">
+<h4>A fault truth table</h4>
+<p>For every fault — death, freeze, cut, bad order, wrong tick, duplicated frame — the table says what the actuator does and why it is safe.</p>
+<p class="reqrow"><span class="req">ACT-02</span><span class="req">ACT-03</span><span class="req">DEG-05</span></p>
+<p class="paths"><a href="https://github.com/BaptisteFaisy/relais/blob/main/docs/TRUTH-TABLE.md">docs/TRUTH-TABLE.md</a></p>
+</article>
+<article class="feature">
+<h4>k-induction: the invariants without a depth bound</h4>
+<p>The explorer proves the invariants up to a depth; the induction engine proves that if they hold on k consecutive steps they hold for ever — so the claim is no longer &#x27;true for 10 million states&#x27;.</p>
+<p class="reqrow"><span class="req">ROB-03</span></p>
+<p class="proof">reproduce: <code>make induction</code></p><p class="paths"><a href="https://github.com/BaptisteFaisy/relais/blob/main/host/explore/induction.c">host/explore/induction.c</a></p>
+</article>
+<article class="feature">
+<h4>A bounded-exhaustive proof over the C source itself</h4>
+<p>The frame decoder and the arbiter are exercised over an exhausted input space, with the harnesses for CBMC and Frama-C ready for when those tools are installed.</p>
+<p class="reqrow"><span class="req">SEC-02</span></p>
+<p class="proof">reproduce: <code>make exhaustive</code></p><p class="paths"><a href="https://github.com/BaptisteFaisy/relais/tree/main/host/modelcheck">host/modelcheck</a></p>
+</article>
+</div>
+</section>
+<section class="theme" id="faults">
+<h3>Faults — injected, adversarial, hostile</h3>
+<p class="hook">The bench is only as good as the faults it survives, so the faults are searched for, not hoped for.</p>
+<div class="grid g2">
+<article class="feature">
+<h4>The fault model of the simulator</h4>
+<p>Death, freeze, cut, delay, bad order and wrong tick, injected at a chosen tick, with a twin that runs without any fault to compare against.</p>
+<p class="reqrow"><span class="req">INJ-01</span><span class="req">INJ-02</span></p>
+<p class="proof">reproduce: <code>make campaign</code></p><p class="paths"><a href="https://github.com/BaptisteFaisy/relais/blob/main/docs/RESULTS.md">docs/RESULTS.md</a> · <a href="https://github.com/BaptisteFaisy/relais/blob/main/host/simulate/sim_faults.c">host/simulate/sim_faults.c</a></p>
+</article>
+<article class="feature">
+<h4>Bit-flips, one bit at a time</h4>
+<p>Single-bit and multi-bit corruptions are injected into frames, journal and state, and the core must reject or absorb every one of them.</p>
+<p class="reqrow"><span class="req">INJ-10</span></p>
+<p class="paths"><a href="https://github.com/BaptisteFaisy/relais/blob/main/docs/SAFETY.md">docs/SAFETY.md</a> · <a href="https://github.com/BaptisteFaisy/relais/blob/main/host/faultinject/bitflip.c">host/faultinject/bitflip.c</a></p>
+</article>
+<article class="feature">
+<h4>Lifecycle and timing faults</h4>
+<p>Warm restart, watchdog, persistence loss and long stalls are faults too: the bench plays them and checks that the handover still happens.</p>
+<p class="reqrow"><span class="req">MAN-11</span></p>
+<p class="paths"><a href="https://github.com/BaptisteFaisy/relais/blob/main/host/faultlife/faultlife.c">host/faultlife/faultlife.c</a></p>
+</article>
+<article class="feature">
+<h4>Byzantine frames and revocation</h4>
+<p>Forged orders, usurped status, stolen keys, replays and floods are played against the arbiter; the safe degraded mode is the expected answer, never a second winner.</p>
+<p class="reqrow"><span class="req">SEC-04</span></p>
+<p class="paths"><a href="https://github.com/BaptisteFaisy/relais/blob/main/host/byzantine/run_byzantine.c">host/byzantine/run_byzantine.c</a></p>
+</article>
+<article class="feature">
+<h4>Fuzzing under the sanitizers</h4>
+<p>The frame, the arbiter and the journal parsers are fuzzed with ASan and UBSan; the surfaces an attacker would touch are the ones fuzzed.</p>
+<p class="reqrow"><span class="req">SEC-05</span></p>
+<p class="proof">reproduce: <code>make fuzz</code></p><p class="paths"><a href="https://github.com/BaptisteFaisy/relais/tree/main/host/fuzz">host/fuzz</a></p>
+</article>
+<article class="feature">
+<h4>Ten fault scenarios, kept as data</h4>
+<p>Nominal slalom, death, freeze, cut, slow machine, double death, and a sweep over every phase of a handover: each scenario is a JSON file the campaign plays at both levels.</p>
+<p class="reqrow"><span class="req">INJ-01</span><span class="req">INJ-05</span></p>
+<p class="proof">reproduce: <code>make campaign</code></p><p class="paths"><a href="https://github.com/BaptisteFaisy/relais/blob/main/docs/RESULTS.md">docs/RESULTS.md</a> · <a href="https://github.com/BaptisteFaisy/relais/tree/main/scenarios">scenarios</a></p>
+</article>
+<article class="feature">
+<h4>A degraded network, played for real</h4>
+<p>A seeded UDP impairment proxy applies loss, bursts, duplication, reordering and asymmetric delay between the two machines, and the protocol is measured under each profile.</p>
+<p class="reqrow"><span class="req">INJ-02</span></p>
+<p class="proof">reproduce: <code>make impair</code></p><p class="paths"><a href="https://github.com/BaptisteFaisy/relais/tree/main/host/impair">host/impair</a></p>
+</article>
+</div>
+</section>
+<section class="theme" id="time">
+<h3>Time — the argument the spec asks for</h3>
+<p class="hook">The protocol has no synchronised clock, so the temporal argument is made on bounds, not on timestamps.</p>
+<div class="grid g2">
+<article class="feature">
+<h4>WCET statistics and response-time analysis</h4>
+<p>Measured worst-case execution times per unit, the resulting response-time bound, and the margin left against the deadline.</p>
+<p class="reqrow"><span class="req">PERF-01</span><span class="req">OBS-02</span></p>
+<p class="proof">reproduce: <code>python3 host/timing/rta.py</code></p><p class="paths"><a href="https://github.com/BaptisteFaisy/relais/blob/main/docs/TIMING.md">docs/TIMING.md</a> · <a href="https://github.com/BaptisteFaisy/relais/blob/main/host/timing/wcet.py">host/timing/wcet.py</a> · <a href="https://github.com/BaptisteFaisy/relais/blob/main/host/timing/rta.py">host/timing/rta.py</a></p>
+</article>
+<article class="feature">
+<h4>The critical path is measured in microseconds</h4>
+<p>From the status received to the order emitted: a log-scale histogram without allocation, percentiles p50 to p99.9, published instead of promised.</p>
+<p class="reqrow"><span class="req">PERF-01</span><span class="req">PERF-02</span></p>
+<p class="paths"><a href="https://github.com/BaptisteFaisy/relais/blob/main/host/measure/latency.c">host/measure/latency.c</a></p>
+</article>
+<article class="feature">
+<h4>The actuator is the clock</h4>
+<p>It beats a tick every period and every order names the tick it targets; an order computed before a freeze is stale by construction.</p>
+<p class="reqrow"><span class="req">CMD-04</span><span class="req">DET-04</span></p>
+<p class="paths"><a href="https://github.com/BaptisteFaisy/relais/blob/main/docs/PROTOCOL.md">docs/PROTOCOL.md</a></p>
+</article>
+</div>
+</section>
+<section class="theme" id="security">
+<h3>Security — keys, rotation, anti-replay</h3>
+<p class="hook">Authentication is assumed, everything beyond it is stated: what the design does not claim is written down too.</p>
+<div class="grid g2">
+<article class="feature">
+<h4>Key agreement and rotation in service</h4>
+<p>Keys are established at start-up and can be rotated while running, without any external library: C11 and libc only.</p>
+<p class="reqrow"><span class="req">SEC-07</span></p>
+<p class="paths"><a href="https://github.com/BaptisteFaisy/relais/blob/main/core/src/keys.c">core/src/keys.c</a> · <a href="https://github.com/BaptisteFaisy/relais/blob/main/core/include/relais/keys.h">core/include/relais/keys.h</a></p>
+</article>
+<article class="feature">
+<h4>The journal is chained</h4>
+<p>Each line carries the hash of the previous one, so a removed or reordered line is detected, not just a corrupted one.</p>
+<p class="reqrow"><span class="req">SEC-06</span></p>
+<p class="paths"><a href="https://github.com/BaptisteFaisy/relais/blob/main/core/src/journal.c">core/src/journal.c</a></p>
+</article>
+<article class="feature">
+<h4>The security concept, and what it does not claim</h4>
+<p>The attacks considered, the ones explicitly out of scope, and the detection that is assumed rather than prevented.</p>
+<p class="reqrow"><span class="req">SEC-01</span></p>
+<p class="paths"><a href="https://github.com/BaptisteFaisy/relais/blob/main/docs/SAFETY.md">docs/SAFETY.md</a></p>
+</article>
+</div>
+</section>
+<section class="theme" id="observability">
+<h3>Observability — see what the machine did</h3>
+<p class="hook">The journal is the source of truth; everything here is a different way of reading it.</p>
+<div class="grid g2">
+<article class="feature">
+<h4>A standalone HTML campaign report</h4>
+<p>One self-contained HTML file, no server and no dependency, regenerated by the CI at every deploy.</p>
+<p class="reqrow"><span class="req">OBS-05</span></p>
+<p class="proof">reproduce: <code>python3 host/report/report.py</code></p><p class="paths"><a href="https://github.com/BaptisteFaisy/relais/blob/main/host/report/report.py">host/report/report.py</a></p>
+</article>
+<article class="feature">
+<h4>A live dashboard and an MCAP export</h4>
+<p>A read-only dashboard follows the journal live — mandate, holder, command source, witness lamp, curves — and the same run is exported to MCAP for any standard viewer.</p>
+<p class="reqrow"><span class="req">OBS-06</span><span class="req">OBS-08</span></p>
+<p class="paths"><a href="https://github.com/BaptisteFaisy/relais/blob/main/host/dashboard/serve.py">host/dashboard/serve.py</a> · <a href="https://github.com/BaptisteFaisy/relais/blob/main/host/export/mcap_writer.py">host/export/mcap_writer.py</a></p>
+</article>
+<article class="feature">
+<h4>An event recorder and a deterministic replay</h4>
+<p>Every handover is recorded as an event with its margins, and the same events are replayed deterministically to compare two runs.</p>
+<p class="reqrow"><span class="req">OBS-07</span></p>
+<p class="paths"><a href="https://github.com/BaptisteFaisy/relais/blob/main/host/edr/edr.py">host/edr/edr.py</a> · <a href="https://github.com/BaptisteFaisy/relais/blob/main/host/replay/replay.py">host/replay/replay.py</a></p>
+</article>
+<article class="feature">
+<h4>A timeline with margins</h4>
+<p>The handover is drawn as a timeline — who commanded, when the mandate changed, how much margin was left.</p>
+<p class="reqrow"><span class="req">OBS-03</span></p>
+<p class="paths"><a href="https://github.com/BaptisteFaisy/relais/blob/main/host/observability-timeline/timeline.py">host/observability-timeline/timeline.py</a></p>
+</article>
+</div>
+</section>
+<section class="theme" id="deployment">
+<h3>Deployment — from zero to two boards</h3>
+<p class="hook">The claim is that the proof bench is reproducible by someone else. Here is the path, with the exact commands.</p>
+<div class="grid g2">
+<article class="feature">
+<h4>QNX 8.0 bring-up pack</h4>
+<p>From a bare workstation to two QNX guests: SDP detection, the build recipe, the image, the network setup and the six experiments to run.</p>
+<p class="reqrow"><span class="req">QNX-01</span><span class="req">QNX-02</span></p>
+<p class="proof">reproduce: <code>python3 host/bench/qnx_env.py</code></p><p class="paths"><a href="https://github.com/BaptisteFaisy/relais/blob/main/docs/QNX-BRINGUP.md">docs/QNX-BRINGUP.md</a> · <a href="https://github.com/BaptisteFaisy/relais/blob/main/host/bench/qnx_build.sh">host/bench/qnx_build.sh</a> · <a href="https://github.com/BaptisteFaisy/relais/blob/main/host/bench/qnx_env.py">host/bench/qnx_env.py</a></p>
+</article>
+<article class="feature">
+<h4>The QNX lifecycle: persistence, warm restart, hypervisor, bus</h4>
+<p>What survives a reboot, how a warm restart is supervised, what changes under a hypervisor, and what a real-time bus would change.</p>
+<p class="reqrow"><span class="req">ACT-05</span><span class="req">ACT-08</span><span class="req">QNX-03</span></p>
+<p class="proof">reproduce: <code>make -C target syntax</code></p><p class="paths"><a href="https://github.com/BaptisteFaisy/relais/blob/main/docs/HYPERVISOR.md">docs/HYPERVISOR.md</a> · <a href="https://github.com/BaptisteFaisy/relais/blob/main/docs/BUS-COMPARISON.md">docs/BUS-COMPARISON.md</a> · <a href="https://github.com/BaptisteFaisy/relais/blob/main/target/persist.c">target/persist.c</a></p>
+</article>
+<article class="feature">
+<h4>Rolling update without interruption</h4>
+<p>One of the two computers is replaced while the other keeps commanding: no tick is left without a fresh order.</p>
+<p class="reqrow"><span class="req">REL-10</span></p>
+<p class="proof">reproduce: <code>make test</code></p><p class="paths"><a href="https://github.com/BaptisteFaisy/relais/blob/main/docs/OTA.md">docs/OTA.md</a> · <a href="https://github.com/BaptisteFaisy/relais/blob/main/host/bench/rolling_update.py">host/bench/rolling_update.py</a> · <a href="https://github.com/BaptisteFaisy/relais/blob/main/scenarios/rolling-update.json">scenarios/rolling-update.json</a></p>
+</article>
+<article class="feature">
+<h4>Two real boards over Ethernet</h4>
+<p>The protocol on two physical boards, with the commands to wire them and the measurements taken from the wire.</p>
+<p class="reqrow"><span class="req">REP-05</span><span class="req">INJ-05</span></p>
+<p class="paths"><a href="https://github.com/BaptisteFaisy/relais/blob/main/docs/TWO-BOARDS.md">docs/TWO-BOARDS.md</a></p>
+</article>
+<article class="feature">
+<h4>A real QNX guest, frozen by QMP</h4>
+<p>One of the two computers is a QEMU guest running QNX, frozen through QMP: the bench stops being a simulation of a freeze.</p>
+<p class="reqrow"><span class="req">INJ-07</span></p>
+<p class="proof">reproduce: <code>make demo</code></p><p class="paths"><a href="https://github.com/BaptisteFaisy/relais/tree/main/host/bench">host/bench</a></p>
+</article>
+<article class="feature">
+<h4>Reproduce it in one container</h4>
+<p>A devcontainer and a bootstrap script bring the whole bench up on a machine that has never seen it.</p>
+<p class="reqrow"><span class="req">REP-01</span><span class="req">REP-05</span></p>
+<p class="proof">reproduce: <code>bash tools/bootstrap.sh</code></p><p class="paths"><a href="https://github.com/BaptisteFaisy/relais/blob/main/docs/REPRODUCE.md">docs/REPRODUCE.md</a> · <a href="https://github.com/BaptisteFaisy/relais/tree/main/.devcontainer/Dockerfile">.devcontainer/Dockerfile</a> · <a href="https://github.com/BaptisteFaisy/relais/blob/main/tools/bootstrap.sh">tools/bootstrap.sh</a></p>
+</article>
+<article class="feature">
+<h4>Other RTOS, another language, other transports</h4>
+<p>The core is ported to Zephyr and FreeRTOS, bound from Rust, and driven over transports other than the reference one.</p>
+<p class="reqrow"><span class="req">QNX-09</span></p>
+<p class="proof">reproduce: <code>make -C ports/zephyr check</code></p><p class="paths"><a href="https://github.com/BaptisteFaisy/relais/tree/main/ports">ports</a> · <a href="https://github.com/BaptisteFaisy/relais/tree/main/transports">transports</a></p>
+</article>
+<article class="feature">
+<h4>The five QNX processes</h4>
+<p>Actuator, node, control, net and ctl as real QNX processes, with the stubs that let them build on a PC and the image fragments that put them on a board.</p>
+<p class="reqrow"><span class="req">QNX-02</span><span class="req">QNX-04</span></p>
+<p class="proof">reproduce: <code>make -C target syntax</code></p><p class="paths"><a href="https://github.com/BaptisteFaisy/relais/blob/main/docs/QNX-BRINGUP.md">docs/QNX-BRINGUP.md</a> · <a href="https://github.com/BaptisteFaisy/relais/tree/main/target">target</a></p>
+</article>
+<article class="feature">
+<h4>The QNX layer, compiled by the real toolchain</h4>
+<p>The five QNX processes are cross-compiled by qcc (SDP 8.0, gcc_ntox86_64) against the real QNX headers — not against stubs. That is how three genuine defects were found: a missing feature macro, a wrong journal API and a dozen undeclared QNX functions.</p>
+<p class="reqrow"><span class="req">QNX-01</span><span class="req">QNX-02</span></p>
+<p class="proof">reproduce: <code>make -C target</code></p><p class="paths"><a href="https://github.com/BaptisteFaisy/relais/tree/main/target">target</a></p>
+</article>
+<article class="feature">
+<h4>A real QNX 8.0 image, booted under QEMU with KVM</h4>
+<p>mkqnximage packs the processes into a bootable image, QEMU starts it with hardware acceleration, and the guest&#x27;s own console and clock are used to measure. The boot log and the screenshots on this page come from that guest.</p>
+<p class="reqrow"><span class="req">QNX-04</span><span class="req">OBS-02</span></p>
+<p class="proof">reproduce: <code>make qnx-proof</code></p><p class="paths"><a href="https://github.com/BaptisteFaisy/relais/tree/main/docs/figures/qnx-guest">docs/figures/qnx-guest</a></p>
+</article>
+</div>
+</section>
+<section class="theme" id="quality">
+<h3>Quality — coverage, static analysis, safety case</h3>
+<p class="hook">The numbers a jury checks first: what is covered, what is analysed, what is declared as debt.</p>
+<div class="grid g2">
+<article class="feature">
+<h4>Branch coverage, static analysis, reproducible build, SBOM</h4>
+<p>Coverage measured on the branches, a static analysis gate, a bit-for-bit reproducible build and a software bill of materials.</p>
+<p class="reqrow"><span class="req">REL-09</span><span class="req">MAN-06</span></p>
+<p class="proof">reproduce: <code>make coverage</code></p><p class="paths"><a href="https://github.com/BaptisteFaisy/relais/blob/main/docs/COVERAGE.md">docs/COVERAGE.md</a> · <a href="https://github.com/BaptisteFaisy/relais/blob/main/docs/QUALITY.md">docs/QUALITY.md</a> · <a href="https://github.com/BaptisteFaisy/relais/blob/main/host/quality/coverage_driver.py">host/quality/coverage_driver.py</a> · <a href="https://github.com/BaptisteFaisy/relais/blob/main/host/quality/sbom.py">host/quality/sbom.py</a></p>
+</article>
+<article class="feature">
+<h4>A generated FMEA and a fault tree</h4>
+<p>The failure modes and their criticality are generated from the code and the scenarios, and the safety case links each to its argument.</p>
+<p class="reqrow"><span class="req">ACT-02</span><span class="req">ACT-03</span></p>
+<p class="paths"><a href="https://github.com/BaptisteFaisy/relais/blob/main/docs/SAFETY-CASE.md">docs/SAFETY-CASE.md</a> · <a href="https://github.com/BaptisteFaisy/relais/tree/main/host/safety">host/safety</a></p>
+</article>
+<article class="feature">
+<h4>The decisions log and the declared debt</h4>
+<p>Every design decision with its reason, and every piece of technical debt we assume on purpose, written down.</p>
+<p class="reqrow"><span class="req">ACT-10</span></p>
+<p class="paths"><a href="https://github.com/BaptisteFaisy/relais/blob/main/docs/DECISIONS.md">docs/DECISIONS.md</a> · <a href="https://github.com/BaptisteFaisy/relais/blob/main/docs/DEBT.md">docs/DEBT.md</a></p>
+</article>
+<article class="feature">
+<h4>Nightly proofs at full scale</h4>
+<p>Every night the full campaign runs, the mutation score is recomputed and the results are published, so a regression cannot hide.</p>
+<p class="reqrow"><span class="req">INJ-08</span><span class="req">ROB-06</span></p>
+<p class="proof">reproduce: <code>make nightly</code></p><p class="paths"><a href="https://github.com/BaptisteFaisy/relais/tree/main/host/nightly">host/nightly</a></p>
+</article>
+<article class="feature">
+<h4>The CI that guards all of it</h4>
+<p>Eleven workflows, each with a five-minute budget: the build and the tests, the scope guard, the static analysis, the reproducible build, the nightly proofs and this page.</p>
+<p class="reqrow"><span class="req">REP-06</span></p>
+<p class="paths"><a href="https://github.com/BaptisteFaisy/relais/blob/main/docs/QUALITY.md">docs/QUALITY.md</a> · <a href="https://github.com/BaptisteFaisy/relais/blob/main/docs/REPRODUCE.md">docs/REPRODUCE.md</a> · <a href="https://github.com/BaptisteFaisy/relais/tree/main/.github/workflows">.github/workflows</a></p>
+</article>
+<article class="feature">
+<h4>Golden traces: no behavioural regression can merge</h4>
+<p>A fixed set of scenarios is replayed and the fingerprints of their journals are compared; a change in the sequence of decisions is refused even when every test stays green.</p>
+<p class="reqrow"><span class="req">REP-02</span></p>
+<p class="proof">reproduce: <code>make golden</code></p><p class="paths"><a href="https://github.com/BaptisteFaisy/relais/tree/main/tools/golden">tools/golden</a></p>
+</article>
+</div>
+</section>
+<section class="theme" id="command">
+<h3>Command — the control law under stress</h3>
+<p class="hook">The law that drives the wheel is studied like any other component: sensitivity, infeasible targets, and the law that takes over.</p>
+<div class="grid g2">
+<article class="feature">
+<h4>Braking profiles, played for real</h4>
+<p>Nominal braking, the holder dying mid-brake, a freeze and a cut: the profile is played and the deviation from the deceleration is published.</p>
+<p class="reqrow"><span class="req">ACT-09</span></p>
+<p class="paths"><a href="https://github.com/BaptisteFaisy/relais/tree/main/host/study">host/study</a></p>
+</article>
+<article class="feature">
+<h4>An impossible setpoint</h4>
+<p>A command the actuator physically cannot follow: the protocol must still hold its bounds instead of chasing the impossible.</p>
+<p class="reqrow"><span class="req">MAN-10</span></p>
+<p class="paths"><a href="https://github.com/BaptisteFaisy/relais/blob/main/host/study/infeasible.py">host/study/infeasible.py</a></p>
+</article>
+<article class="feature">
+<h4>A faithful plant, as an option</h4>
+<p>A higher-fidelity plant model with an observer, available as a variant — the published campaign keeps the default model bit for bit.</p>
+<p class="reqrow"><span class="req">MAN-08</span></p>
+<p class="paths"><a href="https://github.com/BaptisteFaisy/relais/tree/main/host/physics">host/physics</a></p>
+</article>
+<article class="feature">
+<h4>The state of the art, measured the same way</h4>
+<p>A heartbeat-with-timeout and a lease-based design are implemented and run on the same scenarios, so the comparison is a measurement and not an opinion.</p>
+<p class="reqrow"><span class="req">PERF-09</span></p>
+<p class="proof">reproduce: <code>make compare</code></p><p class="paths"><a href="https://github.com/BaptisteFaisy/relais/tree/main/host/baseline">host/baseline</a></p>
+</article>
+</div>
+</section>
+<section class="theme" id="docs">
+<h3>Documents — what a jury reads</h3>
+<p class="hook">The specification, the argument, the talk and the lab: the same content in the forms a reviewer asks for.</p>
+<div class="grid g2">
+<article class="feature">
+<h4>The specification (three parts)</h4>
+<p>Sections 1 to 8, sections 5 to 8 again in detail, and the annex covering the QNX-specific points.</p>
+<p class="reqrow"><span class="req">ACT-01</span></p>
+<p class="paths"><a href="https://github.com/BaptisteFaisy/relais/blob/main/docs/SPEC.md">docs/SPEC.md</a> · <a href="https://github.com/BaptisteFaisy/relais/blob/main/docs/SPEC-2.md">docs/SPEC-2.md</a> · <a href="https://github.com/BaptisteFaisy/relais/blob/main/docs/SPEC-ANNEX.md">docs/SPEC-ANNEX.md</a></p>
+</article>
+<article class="feature">
+<h4>The paper: why the actuator must be the arbiter</h4>
+<p>The argument in written form — the dilemma, the four ideas that solve it, and the limits stated up front.</p>
+<p class="reqrow"><span class="req">ACT-01</span></p>
+<p class="paths"><a href="https://github.com/BaptisteFaisy/relais/blob/main/docs/PAPER.md">docs/PAPER.md</a></p>
+</article>
+<article class="feature">
+<h4>The 45-minute talk</h4>
+<p>A conference or workshop talk that stands on its own, with the figures and the demos it refers to.</p>
+<p class="reqrow"><span class="req">ACT-10</span></p>
+<p class="paths"><a href="https://github.com/BaptisteFaisy/relais/blob/main/docs/TALK.md">docs/TALK.md</a></p>
+</article>
+<article class="feature">
+<h4>The comparison with neighbouring projects</h4>
+<p>What the other approaches do, what they cost, and where this one is genuinely different.</p>
+<p class="reqrow"><span class="req">PERF-09</span></p>
+<p class="paths"><a href="https://github.com/BaptisteFaisy/relais/blob/main/docs/COMPARISON.md">docs/COMPARISON.md</a></p>
+</article>
+<article class="feature">
+<h4>The submission notes</h4>
+<p>Each rule of the hackathon, and the pointer to the artefact that answers it.</p>
+<p class="reqrow"><span class="req">INJ-06</span><span class="req">OBS-02</span></p>
+<p class="paths"><a href="https://github.com/BaptisteFaisy/relais/blob/main/docs/SUBMISSION.md">docs/SUBMISSION.md</a></p>
+</article>
+<article class="feature">
+<h4>A three-hour lab</h4>
+<p>A hands-on tutorial: build it, break it, read the journal, prove something about it.</p>
+<p class="reqrow"><span class="req">REP-04</span></p>
+<p class="paths"><a href="https://github.com/BaptisteFaisy/relais/blob/main/codelab/TP-3h.md">codelab/TP-3h.md</a> · <a href="https://github.com/BaptisteFaisy/relais/blob/main/codelab/README.md">codelab/README.md</a></p>
+</article>
+<article class="feature">
+<h4>The open questions</h4>
+<p>What is still unanswered, stated as questions rather than as promises.</p>
+<p class="reqrow"><span class="req">DET-10</span></p>
+<p class="paths"><a href="https://github.com/BaptisteFaisy/relais/blob/main/docs/OPEN-QUESTIONS.md">docs/OPEN-QUESTIONS.md</a></p>
+</article>
+<article class="feature">
+<h4>The specification in French</h4>
+<p>The same contract, for the readers who would rather have it in the language of the classroom.</p>
+<p class="reqrow"><span class="req">ACT-01</span></p>
+<p class="paths"><a href="https://github.com/BaptisteFaisy/relais/blob/main/docs/spec-fr.md">docs/spec-fr.md</a></p>
+</article>
+</div>
+</section>
+<section class="theme" id="discovered">
+<h3>Everything else in the tree</h3>
+<p class="hook">Discovered automatically at deploy time: nothing that is merged can stay invisible, even if nobody added it to the catalogue above.</p>
+<table class="discovered">
+<tr><td><a href="https://github.com/BaptisteFaisy/relais/tree/main/host/diversity">host/diversity</a></td><td class="num">7 files, 1368 lines</td></tr>
+<tr><td><a href="https://github.com/BaptisteFaisy/relais/tree/main/host/fmeda">host/fmeda</a></td><td class="num">6 files, 1721 lines</td></tr>
+<tr><td><a href="https://github.com/BaptisteFaisy/relais/tree/main/host/transport">host/transport</a></td><td class="num">8 files, 1426 lines</td></tr>
+<tr><td><a href="https://github.com/BaptisteFaisy/relais/tree/main/host/wcet">host/wcet</a></td><td class="num">12 files, 2732 lines</td></tr>
+<tr><td><a href="https://github.com/BaptisteFaisy/relais/blob/main/tools/fuzz-report.py">tools/fuzz-report.py</a></td><td class="num">1 file, 326 lines</td></tr>
+<tr><td><a href="https://github.com/BaptisteFaisy/relais/blob/main/docs/ATTACK-SURFACE.md">docs/ATTACK-SURFACE.md</a></td><td class="num">1 file, 132 lines</td></tr>
+<tr><td><a href="https://github.com/BaptisteFaisy/relais/blob/main/docs/CCF.md">docs/CCF.md</a></td><td class="num">1 file, 363 lines</td></tr>
+<tr><td><a href="https://github.com/BaptisteFaisy/relais/blob/main/docs/COMPARISON-MEASURED.md">docs/COMPARISON-MEASURED.md</a></td><td class="num">1 file, 430 lines</td></tr>
+<tr><td><a href="https://github.com/BaptisteFaisy/relais/blob/main/docs/EXPLORATION.md">docs/EXPLORATION.md</a></td><td class="num">1 file, 146 lines</td></tr>
+<tr><td><a href="https://github.com/BaptisteFaisy/relais/blob/main/docs/FMEDA.md">docs/FMEDA.md</a></td><td class="num">1 file, 214 lines</td></tr>
+<tr><td><a href="https://github.com/BaptisteFaisy/relais/blob/main/docs/FUZZING.md">docs/FUZZING.md</a></td><td class="num">1 file, 163 lines</td></tr>
+<tr><td><a href="https://github.com/BaptisteFaisy/relais/blob/main/docs/GOLDEN.md">docs/GOLDEN.md</a></td><td class="num">1 file, 173 lines</td></tr>
+<tr><td><a href="https://github.com/BaptisteFaisy/relais/blob/main/docs/INDUCTION.md">docs/INDUCTION.md</a></td><td class="num">1 file, 257 lines</td></tr>
+<tr><td><a href="https://github.com/BaptisteFaisy/relais/blob/main/docs/INVARIANTS.md">docs/INVARIANTS.md</a></td><td class="num">1 file, 310 lines</td></tr>
+<tr><td><a href="https://github.com/BaptisteFaisy/relais/blob/main/docs/LATENCY.md">docs/LATENCY.md</a></td><td class="num">1 file, 494 lines</td></tr>
+<tr><td><a href="https://github.com/BaptisteFaisy/relais/blob/main/docs/MODELCHECK.md">docs/MODELCHECK.md</a></td><td class="num">1 file, 289 lines</td></tr>
+<tr><td><a href="https://github.com/BaptisteFaisy/relais/blob/main/docs/NETWORK-IMPAIRMENT.md">docs/NETWORK-IMPAIRMENT.md</a></td><td class="num">1 file, 250 lines</td></tr>
+<tr><td><a href="https://github.com/BaptisteFaisy/relais/blob/main/docs/PORT-FREERTOS.md">docs/PORT-FREERTOS.md</a></td><td class="num">1 file, 127 lines</td></tr>
+<tr><td><a href="https://github.com/BaptisteFaisy/relais/blob/main/docs/PORT-RUST.md">docs/PORT-RUST.md</a></td><td class="num">1 file, 111 lines</td></tr>
+<tr><td><a href="https://github.com/BaptisteFaisy/relais/blob/main/docs/PORT-TRANSPORTS.md">docs/PORT-TRANSPORTS.md</a></td><td class="num">1 file, 160 lines</td></tr>
+<tr><td><a href="https://github.com/BaptisteFaisy/relais/blob/main/docs/PORT-ZEPHYR.md">docs/PORT-ZEPHYR.md</a></td><td class="num">1 file, 118 lines</td></tr>
+<tr><td><a href="https://github.com/BaptisteFaisy/relais/blob/main/docs/SECURITY-POLICY-DEMO.md">docs/SECURITY-POLICY-DEMO.md</a></td><td class="num">1 file, 135 lines</td></tr>
+<tr><td><a href="https://github.com/BaptisteFaisy/relais/blob/main/docs/SECURITY.md">docs/SECURITY.md</a></td><td class="num">1 file, 305 lines</td></tr>
+<tr><td><a href="https://github.com/BaptisteFaisy/relais/blob/main/docs/THREAT-BENCH.md">docs/THREAT-BENCH.md</a></td><td class="num">1 file, 154 lines</td></tr>
+<tr><td><a href="https://github.com/BaptisteFaisy/relais/blob/main/docs/WCET-TARGETS.md">docs/WCET-TARGETS.md</a></td><td class="num">1 file, 498 lines</td></tr>
+</table>
+</section>
+
+<h2>One machine in a real virtual machine, frozen by QMP</h2>
+<p>The actuator and machine A run on the host; <strong>machine B runs inside a QEMU guest</strong> — a Linux kernel booted with a hand-made initramfs holding nothing but a static <code>relais-node</code> and a 60-line init. The fault is injected through QMP: <code>stop</code> freezes the whole guest (CPU, timers, network), <code>cont</code> wakes it.</p>
+<div class="grid g2">
+  <figure><img src="figures/guest-frozen.png" alt="The QEMU guest while frozen, holding mandate 1" loading="lazy">
+  <figcaption><strong>While frozen.</strong> The guest's own console: <code>role=holder mandate=1</code>, orders and shadows counted, the screen stopped mid-line.</figcaption></figure>
+  <figure><img src="figures/guest-after.png" alt="The same guest after thawing, standing down as second" loading="lazy">
+  <figcaption><strong>After <code>cont</code>.</strong> <code>role=second mandate=0 seen_holder=A</code>, importing the replica: the revenant stood down by itself.</figcaption></figure>
+</div>
+<figure style="margin-top:16px;background:#fff"><img src="figures/proof.svg" alt="Command curve through the freeze, source per tick and mandates" loading="lazy">
+<figcaption>The command curve through the freeze, the source of every tick (holder → testament → holder), and the mandates. Journal of that run: 99 ticks, <strong>0 violation</strong>, worst gap 3 against a bound of p+1 = 4, deviation from the twin without fault 0.</figcaption></figure>
+<pre>tick 30  mandate_granted  B  mandate 1    the virtual machine takes the mandate
+tick 60  QMP stop         misses 1,2,3    the will covers every tick
+tick 63  mandate_revoked  B  detail=4     revoked on the actuator's own evidence
+tick 63  mandate_granted  A  mandate 2    the handover, zero tick without a value
+tick 67  order_rejected   B  detail=1 ×4  the revenant's stale orders, refused
+tick 76  certified        B  mandate 2    back as a certified second</pre>
+
+<h2>Live dashboard</h2>
+<p>The actuator writes a JSON-lines journal; a read-only dashboard (host/dashboard/serve.py) follows it live — mandate, holder, command source, witness lamp, curves, takeover events — and host/export/mcap_writer.py exports it to <a href="https://mcap.dev">MCAP</a> for any standard viewer. Below: a static capture of a handover, and an <a href="dashboard.html">offline replay</a> of the same journal, tick by tick, with a play button.</p>
+<figure style="background:#0b0f14"><img src="dashboard.svg" alt="Dashboard capture of a handover: command curve, source strip, mandate band" loading="lazy">
+<figcaption><strong>Dashboard during a handover</strong> (death of A at tick 500): the command curve, the source of every tick, and the mandate band. Journal of that run: <code>runs/site/death</code>, regenerated by the CI at every deploy.</figcaption></figure>
+
+<h2>A real QNX 8.0, booted in an emulator</h2>
+<p>The protocol is not only a model. The QNX layer is cross-compiled with the
+<strong>real toolchain</strong> — SDP 8.0, <code>qcc -V gcc_ntox86_64</code> — packed
+into a bootable image by <code>mkqnximage</code>, and started under
+<strong>QEMU with KVM acceleration</strong>. The picture below is the console of
+that guest, captured while it was running.</p>
+<figure><img src="figures/qnx-guest/guest-qnx.png" alt="The console of the QNX 8.0 guest, captured over QMP while the guest was running" loading="lazy">
+<figcaption><strong>The guest.</strong> QNX Neutrino 8.0.0, booted from a disk image
+built by <code>mkqnximage</code>, under QEMU 8.2.2 with <code>-enable-kvm</code>. The
+screen was grabbed over QMP while the guest was alive; the boot log below comes
+from the same session.</figcaption></figure>
+<div class="grid g2">
+  <div class="card"><h3>What is inside</h3><p>Five real QNX binaries — the actuator, the
+  core, the control unit, the utility and the network layer — each an
+  <code>ELF 64-bit x86-64</code> linked against <code>/usr/lib/ldqnx</code>, built by the
+  same <code>qcc</code> that ships the platform. The core library is not recompiled for
+  the target: the <em>same</em> C11 sources are built for the host bench, for the QNX
+  processes and for the explorer.</p></div>
+  <div class="card"><h3>What was measured inside</h3><p>Boot to a usable shell in
+  <strong>12–14 s</strong> over five boots. Inside the guest, 10 000 calls to
+  <code>clock_gettime(CLOCK_MONOTONIC)</code> cost <strong>16 ns</strong> on average
+  (min 12 ns, max 3.1 µs) — the price of the clock the protocol's timing argument
+  rests on. The harness drives the guest over its serial console and can kill a
+  process <em>from inside the guest</em>, so the fault is injected on the target, not
+  simulated on the host.</p></div>
+</div>
+<pre>---> Starting slogger2
+---> Starting PCI Services
+---> Starting fsevmgr
+---> Starting devb
+---> Mounting file systems
+Path=0 - Intel 82371SB  target=0 lun=0  Direct-Access(0) - QEMU HARDDISK Rev: 2.5+
+Path=1 - Intel 82371SB  target=0 lun=0  CD-ROM(5) - QEMU QEMU DVD-ROM Rev: 2.5+
+---> Starting Networking
+---> Starting sshd
+---> Starting misc
+# uname -a
+QNX relais-m46 8.0.0 2026/06/05-16:26:03EDT x86pc x86_64</pre>
+<p><a href="https://github.com/BaptisteFaisy/relais/blob/main/docs/QNX-RUN.md">how the image is built, booted and measured</a> ·
+<a href="https://github.com/BaptisteFaisy/relais/blob/main/docs/QNX-BUILD.md">how the QNX layer was made to compile against the real headers</a></p>
+
+<h2>Run it yourself</h2>
+<pre>git clone https://github.com/BaptisteFaisy/relais.git &amp;&amp; cd relais
+make -j$(nproc)     # gcc, make, python3 — nothing else
+make demo           # three real processes on your PC, a handover, the verdict
+make test           # 5 651 checks
+make explore        # exhaustive exploration of the core
+make campaign       # the fault campaign
+python3 host/bench/vm_demo.py          # machine B inside QEMU, frozen by QMP
+python3 host/mutants/run_mutants.py    # 8/8 mutants must be flagged</pre>
+
+<h2>Honest limits</h2>
+<div class="note">
+<p><strong>Aligned with</strong> annex 6 §3.4.3.2 of UN Regulation No. 79 — never <em>compliant</em>, never certifiable. Every latency quoted is a <strong>measured worst case under emulation</strong>, not a proven worst case.</p>
+<p>The QNX layer is written and syntax-checked under <code>-Werror</code> against QNX stubs (<code>make -C target syntax</code>); <strong>it has never been compiled with the SDP 8.0 nor booted</strong>, because no SDP is available here. The guest in the demonstration above is Linux, not QNX: the protocol core is the same C11 either way. A machine that computes wrong is <em>detected</em>, not outvoted — masking it needs a third machine. The actuator is a declared single point of failure; its arbitration core is tiny and exhaustively explored.</p>
+</div>
+
+<h2>Read further</h2>
+<table>
+<tr><th><a href="https://github.com/BaptisteFaisy/relais/blob/main/README.md">README</a></th><td>pitch, one-command demo, QNX evidence, status of the tree</td></tr>
+<tr><th><a href="https://github.com/BaptisteFaisy/relais/blob/main/docs/SPEC.md">Specification</a></th><td>the full requirements, level by level (S / C / X), with verification means</td></tr>
+<tr><th><a href="https://github.com/BaptisteFaisy/relais/blob/main/docs/PROTOCOL.md">Protocol</a></th><td>frame format byte by byte, the seven messages, the tick sequence</td></tr>
+<tr><th><a href="https://github.com/BaptisteFaisy/relais/blob/main/docs/SAFETY.md">Safety concept</a></th><td>principle, logic, redundancy, built-in checks, FMEA, limits of effectiveness</td></tr>
+<tr><th><a href="https://github.com/BaptisteFaisy/relais/blob/main/docs/RESULTS.md">Results</a></th><td>every measured number, and the command that produced it</td></tr>
+<tr><th><a href="https://github.com/BaptisteFaisy/relais/blob/main/codelab/README.md">Codelab</a></th><td>nine steps, from <code>make demo</code> to your own control law</td></tr>
+</table>
+
+</div>
+<footer><div class="wrap">
+  Relais — Apache-2.0 · <a href="https://github.com/BaptisteFaisy/relais">github.com/BaptisteFaisy/relais</a> ·
+  this page and its report are rebuilt and republished by the repository's own CI on every merge.
+</div></footer>
+</body>
+</html>
