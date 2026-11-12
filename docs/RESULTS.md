@@ -27,6 +27,8 @@ real ECU. They are published with their bounds, not as proven worst cases.
 | **12 hours** without a wrongful handover (8 640 000 ticks) under 1 % frame loss | **0 violation**, worst gap 1 tick (bound p+1) | `relais-simulate --ticks 8640000 --loss 0.01` |
 | **One billion ticks** simulated, level C, no fault | **0 violation**, worst gap 0, deviation 0, in 30 min | `relais-simulate --ticks 1000000000 --level complet` |
 | The bench sees its own defects | **8 mutants out of 8 flagged** | `host/mutants/run_mutants.py` |
+| Fine hardware faults: 10 000 simulated runs, one bit flip each | **0 safety violation over 8 525 injections**, 1 208 detected, 7 317 masked | `host/faultinject/campaign.py --runs 10000 --seed 1` (§4c) |
+| A frame corrupted after authentication, re-signed with a CRC | level S accepts **10 000/10 000**, level C (keyed MAC) accepts **0/10 000** | `./build/test_faultinject` (§4c) |
 
 ## 2. Scale of the campaign
 
@@ -99,6 +101,101 @@ invariants keep being enforced everywhere, at every level, on every path:
 | I11 ticks are contiguous, every event is processed | always | idem |
 | DET-03 no handover without the actuator's own evidence | always | idem |
 | I4 bounded gap, I5 continuity, I9 reintegration | inside the timing hypothesis, single fault | idem |
+
+## 4c. Fine hardware faults: bit flips in memory and in flight
+
+`host/faultinject/` lifts the limit that `docs/SAFETY.md` §7 used to state: the
+bench now produces **fine hardware faults** — a single inverted bit — in
+simulation. Three modules of pure host code, none of them touching the core:
+
+| Module | What it injects |
+|---|---|
+| `bitflip.c` | a bit, a byte or a 32-bit word inverted in a machine state (`relais_node_sm`), in a control state (`relais_ctl_state`) or in an encoded frame in flight, at a chosen bit or at a random one drawn from a seeded stream; four named zones: the raw mandate, the targeted tick, the replicated state, the computed value |
+| `corrupt.c` | a frame corrupted **after authentication**: the body is modified and the trailer recomputed, so the frame looks valid — the difference between a noisy channel and a component that lies |
+| `resource.c` | a full frame queue, a saturated journal buffer, and a failing allocator on a path that is not supposed to allocate |
+
+### CRC against MAC, on 10 000 corruptions
+
+Each corruption flips one bit of the command value of an authenticated frame and
+re-signs it with a CRC-32C (`./build/test_faultinject`):
+
+| Control on the corrupted frame | Accepted out of 10 000 |
+|---|---|
+| CRC-32C, level S | **10 000** |
+| keyed MAC (SipHash-2-4), level C | **0** |
+
+A recomputed CRC cannot be told apart from a legitimate frame by a CRC: level S
+accepts every one of them. Only the keyed authenticator of level C unmasks the
+lying component (SEC-02). The same test shows the two other properties: a bit
+flip in the raw mandate is refused by both controls and, even when it reaches the
+arbiter, is never applied as an order (SEC-04); a value that diverges from the
+replicated shadow is reported as a disagreement after three ticks (DET-09);
+resource exhaustion stays loud and safe — a full queue refuses and counts, a
+saturated journal refuses and counts, and the core makes **zero** allocation
+calls, so a failing allocator cannot reach it (ROB-02, OBS-02, MAN-04).
+
+### Campaign: 10 000 simulated runs, one bit flip each
+
+`python3 host/faultinject/campaign.py --runs 10000 --seed 1` drives
+`build/relais-faultinject`, which runs the same world as the simulator, injects
+exactly one flip per run, and compares it against a twin that ran identically
+without the fault. 8 525 of the 10 000 runs found a target; the other 1 475 hit
+an instant with no frame in flight and are reported as `no-target`.
+
+| axis | value | injections | detected | masked | violations |
+|---|---|---|---|---|---|
+| target | node | 3321 | 0 | 3321 | 0 |
+| target | ctl | 2672 | 0 | 2672 | 0 |
+| target | frame | 2532 | 1208 | 1324 | 0 |
+| zone | any | 1205 | 101 | 1104 | 0 |
+| zone | mandate | 1488 | 330 | 1158 | 0 |
+| zone | tick | 2199 | 342 | 1857 | 0 |
+| zone | ctlstate | 1480 | 0 | 1480 | 0 |
+| zone | value | 2153 | 435 | 1718 | 0 |
+| grain | bit | 2877 | 364 | 2513 | 0 |
+| grain | byte | 2872 | 375 | 2497 | 0 |
+| grain | word | 2776 | 469 | 2307 | 0 |
+| **total** | **10 000 runs** | **8525** | **1208** | **7317** | **0** |
+
+| reaction of the system | runs |
+|---|---|
+| masked | 7317 |
+| frame refused and counted (`reject`) | 729 |
+| second decertified (`decertified`) | 479 |
+
+Seed 1, level complet, 40 ticks per run, one injection per run. Safety
+invariants enforced on every run: I1, I2, I3, I6, I8, I9, I10, I11, DET-03 —
+**0 violation**. Continuity (I4/I5) is not claimed from the injection tick on: a
+raw bit flip is outside the modelled fault taxonomy, exactly as a second fault
+is (spec 3.3).
+
+What the numbers say:
+
+1. **What the arbiter can check, it checks.** 729 runs end with a frame refused
+   and counted (`not_holder`, `mandate_stale`, `mandate_future`, `tick_missed`),
+   479 with the second decertified after a diverging shadow. No holder change
+   was ever triggered by a flip: `handovers` moved on 0 runs.
+2. **A machine's mandate copy heals itself.** `relais_node_on_status` re-reads
+   the mandate the actuator publishes on every STATUT (MAN-01), so a flip in
+   `relais_node_sm.mandate` does not survive to the next order: the 3 321
+   node-state injections produced no reaction at all — and I3 held on every one
+   of them, so no order of a deposed machine was ever applied.
+3. **A flip in the replicated control state is copied, not compared.** The
+   holder exports its state every tick and the second imports it
+   (`relais_ctl_export` / `relais_ctl_import`), so both machines compute the
+   *same* wrong value and the order/shadow comparison of DET-09 has nothing to
+   disagree about. 780 runs applied a value that deviated from the twin, the
+   largest deviation being 1.46 of full scale — each applied value staying
+   inside the actuator's own clamp (ACT-05, ±1.0), which is the bound that
+   holds. Masking that class of fault needs a dissimilar backup (DEG-08) or a
+   third machine and a vote (REP-08); it is listed as a limit in
+   `docs/SAFETY.md` §7.
+4. **A flip in a field no decision reads is masked by construction**: the
+   mandate of a shadow (the arbiter checks only its tick), the mandate of a
+   cession (which is then ignored), the unused tail of a testament.
+
+Reproduce: `make -j4 all && ./build/test_faultinject` and
+`python3 host/faultinject/campaign.py --runs 2000 --seed 1`.
 
 ## 5. The mutant bench (spec 7.6)
 
