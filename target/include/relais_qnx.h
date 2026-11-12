@@ -12,9 +12,23 @@
 #include <stdint.h>
 
 #ifdef __QNX__
+/* The real SDP 8.0 headers, in one place, so that every target file sees the
+ * same declarations and nobody re-guesses an API (QNX-06).
+ *   sched.h        SCHED_FIFO, struct sched_param (the fixed priority)
+ *   sys/dispatch.h name_attach, name_open
+ *   sys/mman.h     mlockall, MCL_CURRENT, MCL_FUTURE
+ *   sys/neutrino.h the message passing and the timers
+ *   sys/slog2.h    slog2c
+ *   sys/trace.h    trace_logf
+ *   hw/inout.h     out32, for the isa-debug-exit death points
+ */
+#include <sched.h>
+#include <sys/dispatch.h>
+#include <sys/mman.h>
 #include <sys/neutrino.h>
 #include <sys/slog2.h>
 #include <sys/trace.h>
+#include <hw/inout.h>
 #elif defined(RELAIS_HOST_STUB)
 #include "../host_stub.h"
 #else

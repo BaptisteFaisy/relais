@@ -88,10 +88,33 @@ static void send_frame(net_t *n, const relais_msg *m) {
 /* What relais-core asks us to put on the wire. */
 static void serve_core(net_t *n) {
   rl_frame_msg in;
-  unsigned id = 0;
-  if (MsgReceive(n->channel, &in, sizeof in, &id) == -1) return;
+  struct _msg_info info;
+  /* MsgReceive() takes the message info as its fourth argument and returns the
+   * receive id, which is what MsgReply() answers. */
+  rcvid_t rcvid = MsgReceive(n->channel, &in, sizeof in, &info);
+  if (rcvid == -1) return;
   if (in.h.type == RL_MSG_FRAME) send_frame(n, &in.msg);
-  MsgReply(id, 0, NULL, 0);
+  MsgReply(rcvid, 0, NULL, 0);
+}
+
+/* A QNX channel is pollable like a socket, so one poll covers the two links
+ * and the core at the same time: no busy waiting anywhere (QNX-02). */
+static void net_loop(net_t *n) {
+  struct pollfd fds[3];
+  fds[0].fd = n->sock_actuator;
+  fds[1].fd = n->sock_peer;
+  fds[2].fd = n->channel;
+  for (int i = 0; i < 3; i++) fds[i].events = POLLIN;
+  for (;;) {
+    int ready = poll(fds, 3, -1);
+    if (ready < 0) {
+      if (errno == EINTR) continue;
+      break;
+    }
+    if (fds[0].revents & POLLIN) pump_socket(n, n->sock_actuator);
+    if (fds[1].revents & POLLIN) pump_socket(n, n->sock_peer);
+    if (fds[2].revents & POLLIN) serve_core(n);
+  }
 }
 
 int main(int argc, char **argv) {
@@ -130,24 +153,7 @@ int main(int argc, char **argv) {
   }
 #endif
   rl_log(SLOG2_INFO, "net: up, priority %d", RELAIS_PRIO_NET);
-
-  /* A QNX channel is pollable like a socket, so one poll covers the two links
-   * and the core at the same time: no busy waiting anywhere (QNX-02). */
-  struct pollfd fds[3];
-  fds[0].fd = n.sock_actuator;
-  fds[1].fd = n.sock_peer;
-  fds[2].fd = n.channel;
-  for (int i = 0; i < 3; i++) fds[i].events = POLLIN;
-  for (;;) {
-    int ready = poll(fds, 3, -1);
-    if (ready < 0) {
-      if (errno == EINTR) continue;
-      break;
-    }
-    if (fds[0].revents & POLLIN) pump_socket(&n, n.sock_actuator);
-    if (fds[1].revents & POLLIN) pump_socket(&n, n.sock_peer);
-    if (fds[2].revents & POLLIN) serve_core(&n);
-  }
+  net_loop(&n);
   rl_log(SLOG2_INFO, "net: %u received, %u rejected, %u sent", (unsigned)n.received,
          (unsigned)n.rejected, (unsigned)n.sent);
   close(n.sock_actuator);

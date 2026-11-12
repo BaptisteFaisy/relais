@@ -107,10 +107,9 @@ static void emit(const relais_node_out *out) {
 
 /* --- /dev/relais: three names, one role each, no devctl (QNX-01) --- */
 
-static void serve_read(int channel, unsigned id, const char *text) {
+static void serve_read(rcvid_t rcvid, const char *text) {
   size_t len = strlen(text);
-  MsgReply(id, (long)len, text, (int)len + 1);
-  (void)channel;
+  MsgReply(rcvid, (long)len, text, len + 1);
 }
 
 static void lamp_text(char *buf, size_t cap) {
@@ -118,15 +117,15 @@ static void lamp_text(char *buf, size_t cap) {
            relais_cause_name(RELAIS_CAUSE_NONE));
 }
 
-static void handle_client(int channel, unsigned id, rl_command_msg *msg, char *text,
-                          size_t cap) {
-  unsigned rid = 0;
-  ssize_t got = MsgReceive(channel, msg, sizeof *msg, &rid);
-  if (got <= 0) {
-    MsgError(rid, EIO);
+static void handle_client(int channel, rl_command_msg *msg, char *text, size_t cap) {
+  struct _msg_info info;
+  /* MsgReceive() returns the receive id; the byte count is in the info. */
+  rcvid_t rcvid = MsgReceive(channel, msg, sizeof *msg, &info);
+  if (rcvid == -1) return;
+  if (info.msglen <= 0) {
+    MsgError(rcvid, EIO);
     return;
   }
-  (void)id;
   if (msg->h.type == RL_MSG_COMMAND) {
     relais_node_out out;
     switch (msg->command) {
@@ -139,12 +138,85 @@ static void handle_client(int channel, unsigned id, rl_command_msg *msg, char *t
       default: break;
     }
     snprintf(text, cap, "ok\n");
-    MsgReply(rid, 2, text, 3);
+    MsgReply(rcvid, 2, text, 3);
     return;
   }
   /* A read: the status text, or the lamp. */
   if (relais_node_status_text(&g_sm, text, cap) < 0) text[0] = '\0';
-  serve_read(channel, rid, text);
+  serve_read(rcvid, text);
+}
+
+/* The three names of /dev/relais: the clients of the status text, and the
+ * lamp. One poll wakes them all. */
+static void serve_channels(int ch_status, int ch_lamp, int ch_ctl, rl_command_msg *msg,
+                           char *text, size_t cap, const struct pollfd *fds) {
+  if (fds[0].revents & POLLIN) handle_client(ch_status, msg, text, cap);
+  if (fds[1].revents & POLLIN) {
+    lamp_text(text, cap);
+    struct _msg_info lamp_info;
+    rcvid_t lamp_rcvid = MsgReceive(ch_lamp, msg, sizeof *msg, &lamp_info);
+    if (lamp_rcvid != -1) serve_read(lamp_rcvid, text);
+  }
+  if (fds[2].revents & POLLIN) handle_client(ch_ctl, msg, text, cap);
+}
+
+/* One frame from relais-net: the state machine decides what goes out, and the
+ * answer to the sender goes first, so the link never waits on the emit. */
+static void handle_frame(const rl_frame_msg *in, rcvid_t rid) {
+  relais_node_out out;
+  rl_trace("core rx %s tick %llu", relais_msg_type_name(in->msg.type),
+           (unsigned long long)in->msg.tick);
+  switch (in->msg.type) {
+    case RELAIS_MSG_STATUT: relais_node_on_status(&g_sm, &in->msg, &out); break;
+    case RELAIS_MSG_ETAT: relais_node_on_etat(&g_sm, &in->msg, &out); break;
+    case RELAIS_MSG_SUIVI: relais_node_on_suivi(&g_sm, &in->msg, &out); break;
+    default: relais_node_clear_out(&out); break;
+  }
+  MsgReply(rid, 0, NULL, 0);
+  emit(&out);
+}
+
+/* The wait loop: the three names of /dev/relais and the frames that relais-net
+ * hands over. One poll covers everything, no busy waiting (QNX-02). */
+static void core_loop(int ch_status, int ch_lamp, int ch_ctl, int timeout_ms) {
+  struct pollfd fds[3];
+  fds[0].fd = ch_status;
+  fds[1].fd = ch_lamp;
+  fds[2].fd = ch_ctl;
+  for (int i = 0; i < 3; i++) fds[i].events = POLLIN;
+
+  rl_command_msg msg;
+  char text[RELAIS_STATUS_LEN];
+  for (;;) {
+    int ready = poll(fds, 3, timeout_ms);
+    if (ready == 0) {
+      /* No STATUT for a whole bail period: depose ourselves (MAN-09). Safety
+       * does not depend on it, the actuator has already moved on; this is for
+       * the diagnosis and for DET-07 ("without actuator"). */
+      relais_node_out out;
+      relais_node_on_silence(&g_sm, g_sm.now + 1, &out);
+      emit(&out);
+      continue;
+    }
+    if (ready < 0) {
+      if (errno == EINTR) continue;
+      break;
+    }
+    if (fds[0].revents & POLLIN || fds[1].revents & POLLIN || fds[2].revents & POLLIN)
+      serve_channels(ch_status, ch_lamp, ch_ctl, &msg, text, sizeof text, fds);
+
+    /* Frames from relais-net arrive as messages on our own connection; on QNX
+     * they wake us through the same poll, on the syntax host they do not. */
+    rl_frame_msg in;
+    struct _msg_info frame_info;
+    rcvid_t rid = MsgReceive(ch_status, &in, sizeof in, &frame_info);
+    if (rid == -1) continue;
+    if (in.h.type != RL_MSG_FRAME) {
+      MsgReply(rid, 0, NULL, 0);
+      continue;
+    }
+    handle_frame(&in, rid);
+  }
 }
 
 int main(int argc, char **argv) {
@@ -190,57 +262,6 @@ int main(int argc, char **argv) {
   rl_log(SLOG2_INFO, "core: up as %s, priority %d", relais_node_name(self),
          RELAIS_PRIO_CORE);
 
-  struct pollfd fds[3];
-  fds[0].fd = ch_status;
-  fds[1].fd = ch_lamp;
-  fds[2].fd = ch_ctl;
-  for (int i = 0; i < 3; i++) fds[i].events = POLLIN;
-
-  rl_command_msg msg;
-  char text[RELAIS_STATUS_LEN];
-  for (;;) {
-    int ready = poll(fds, 3, (int)relais_params_period_ms(&params) * 3);
-    if (ready == 0) {
-      /* No STATUT for a whole bail period: depose ourselves (MAN-09). Safety
-       * does not depend on it, the actuator has already moved on; this is for
-       * the diagnosis and for DET-07 ("without actuator"). */
-      relais_node_out out;
-      relais_node_on_silence(&g_sm, g_sm.now + 1, &out);
-      emit(&out);
-      continue;
-    }
-    if (ready < 0) {
-      if (errno == EINTR) continue;
-      break;
-    }
-    if (fds[0].revents & POLLIN) handle_client(ch_status, 0, &msg, text, sizeof text);
-    if (fds[1].revents & POLLIN) {
-      lamp_text(text, sizeof text);
-      unsigned rid = 0;
-      if (MsgReceive(ch_lamp, &msg, sizeof msg, &rid) == 0) serve_read(ch_lamp, rid, text);
-    }
-    if (fds[2].revents & POLLIN) handle_client(ch_ctl, 0, &msg, text, sizeof text);
-
-    /* Frames from relais-net arrive as messages on our own connection; on QNX
-     * they wake us through the same poll, on the syntax host they do not. */
-    rl_frame_msg in;
-    unsigned rid = 0;
-    if (MsgReceive(ch_status, &in, sizeof in, &rid) != 0) continue;
-    if (in.h.type != RL_MSG_FRAME) {
-      MsgReply(rid, 0, NULL, 0);
-      continue;
-    }
-    relais_node_out out;
-    rl_trace("core rx %s tick %llu", relais_msg_type_name(in.msg.type),
-             (unsigned long long)in.msg.tick);
-    switch (in.msg.type) {
-      case RELAIS_MSG_STATUT: relais_node_on_status(&g_sm, &in.msg, &out); break;
-      case RELAIS_MSG_ETAT: relais_node_on_etat(&g_sm, &in.msg, &out); break;
-      case RELAIS_MSG_SUIVI: relais_node_on_suivi(&g_sm, &in.msg, &out); break;
-      default: relais_node_clear_out(&out); break;
-    }
-    MsgReply(rid, 0, NULL, 0);
-    emit(&out);
-  }
+  core_loop(ch_status, ch_lamp, ch_ctl, (int)relais_params_period_ms(&params) * 3);
   return 0;
 }
