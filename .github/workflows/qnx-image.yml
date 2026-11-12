@@ -94,7 +94,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: qnx-relais-image
-          path: build/qnx-relais
+          path: |
+            build/qnx-vm/output/ifs.bin
+            build/qnx-vm/output/disk-qemu.vmdk
           if-no-files-found: error
 
       # The explicit, commented "skipped" explanation for a runner without SDP.
