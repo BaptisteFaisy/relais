@@ -184,6 +184,29 @@ Path=1 - Intel 82371SB  target=0 lun=0  CD-ROM(5) - QEMU QEMU DVD-ROM Rev: 2.5+
 QNX relais-m46 8.0.0 2026/06/05-16:26:03EDT x86pc x86_64</pre>
 <p><a href="https://github.com/BaptisteFaisy/relais/blob/main/docs/QNX-RUN.md">how the image is built, booted and measured</a> ·
 <a href="https://github.com/BaptisteFaisy/relais/blob/main/docs/QNX-BUILD.md">how the QNX layer was made to compile against the real headers</a></p>
+<div class="note">
+<p><strong>Is it real time? Two different questions.</strong></p>
+<p><strong>The protocol's guarantee does not depend on it.</strong> The guarantee
+is expressed in <em>ticks</em> — logical time — and the guest counts them
+exactly: 10 198 330 states explored with 0 violation, 426 587 checks, and a
+takeover measured in ticks. What an emulator changes is the <em>wall-clock</em>
+part of the story, not the safety argument.</p>
+<p><strong>The emulator itself is not a real-time environment</strong>, and the
+project says so with numbers instead of a caveat. Inside the guest, reading the
+monotonic clock costs <strong>20 ns</strong> (min 9 ns, max 659 ns over 10 000
+calls), but the guest's wake-up latency is the <em>host's</em>: measured here at
+a floor of <strong>41 µs</strong>, a mean of <strong>1.4 ms</strong> and a worst
+case of <strong>12.5 ms</strong> — on a machine whose load average was 52 on 12
+cores, because other campaigns share it. Pinning the vCPUs and raising the
+process priority did change the boot time (8.4 s → 3.7 s) but not the jitter
+(1 371 µs → 1 448 µs): the jitter is contention, not configuration.</p>
+<p>Hard real time would need a dedicated target — a QNX board, or a Linux target
+with <code>PREEMPT_RT</code> and an isolated core — where the guest's wake-up
+latency stops depending on anything else. That is still
+<code>BLOCKED(no target hardware)</code>, and the numbers above are published as
+they are, not as a wish.</p>
+<p><a href="https://github.com/BaptisteFaisy/relais/blob/main/docs/evidence/qnx-rt-profile.json">the two measurement runs, with the host load recorded next to each</a></p>
+</div>
 
 <h2>Run it yourself</h2>
 <pre>git clone https://github.com/BaptisteFaisy/relais.git &amp;&amp; cd relais
