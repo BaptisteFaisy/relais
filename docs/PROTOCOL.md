@@ -238,13 +238,22 @@ the verifier reads.
 
 ```
 {"kind":"header","version":1,"mutant":0,"scenario":"slalom-death-A","scenario_id":1,
- "params":{"T":5,"p":1,"N":8,"certify":3,"bail":4,"eps":0.005,"delta":0.02,"degraded":6000}}
+ "params":{"T":5,"p":1,"N":8,"certify":3,"bail":4,"eps":0.005,"delta":0.02,"degraded":6000},
+ "chain":"1da9e2d749c44f1c"}
 {"kind":"tick","tick":41,"ns":0,"mandate":7,"holder":"A","source":"holder","value":0.125,
  "pos":0.4,"vel":0.01,"setpoint":0.5,"misses":0,"lamp":"off","cause":"none",
- "certified":true,"certified_node":"B","stop":false}
+ "certified":true,"certified_node":"B","stop":false,"chain":"e6463b7efd919f9a"}
 {"kind":"event","tick":42,"ns":0,"event":"mandate_granted","node":"B","mandate":8,
- "detail":0,"text":"demande"}
+ "detail":0,"text":"demande","chain":"cd469cfd2cb2090b"}
 ```
+
+`chain` is the last key of every record a current build writes: 16 hexadecimal
+digits, the fingerprint of the previous record chained to this one
+(`CONTRACT.md`, "The `chain` field"). It makes an edit, a deletion or an
+insertion after the fact detectable, and it is **optional for readers**: a
+journal without it — an older run, like the ones kept under `docs/figures/` —
+is still read and still verified. `relais-verify --check-chain` recomputes the
+chain and names the first break.
 
 Enumerated values on the wire of the journal:
 

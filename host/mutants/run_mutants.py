@@ -24,7 +24,13 @@ import sys
 import tempfile
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-BASE_FLAGS = "-D_POSIX_C_SOURCE=200809L {mut} -Icore/include -Icore/tests -MMD -MP"
+# This list must mirror the Makefile's CPPFLAGS: the bench overrides CPPFLAGS on
+# the command line, which makes make ignore the Makefile's own `CPPFLAGS +=`, so
+# anything missing here is missing from the mutant build too. `-Iactuator` was
+# left out and broke the build as soon as host/simulate/main.c started including
+# actuator/journal_writer.h.
+BASE_FLAGS = ("-D_POSIX_C_SOURCE=200809L {mut} -Icore/include -Icore/tests "
+              "-Iactuator -MMD -MP")
 
 # mutant: defect, what the bench must report, scenario, extra flags
 MUTANTS = {

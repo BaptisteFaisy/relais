@@ -64,6 +64,10 @@ void t_fail_near(const char *file, int line, const char *na, double va,
 
 /* ---- shared fixtures: one place, no copy-paste between tests ---- */
 
+/* Parse a 32-hex-digit key and check that it parsed: shared by the crypto tests
+ * so no test file re-implements key loading. */
+bool t_key(relais_key *k, const char *hex);
+
 /* Deterministic PRNG, same stream everywhere (xorshift64*). */
 typedef struct { uint64_t s; } t_rng;
 void t_rng_seed(t_rng *r, uint64_t seed);

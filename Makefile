@@ -245,6 +245,19 @@ coverage:
 clean:
 	rm -rf $(BUILD)
 
+# --- M21: keys, anti-replay and the chained journal (SEC-07, ideas 31-34) ---
+# Appended at the end and never edited above: thirteen missions integrate one
+# after another, so an existing line is never rewritten here.
+#
+# The simulator and the protocol-level tests write their journal through the
+# shared chained writer of actuator/journal_writer.c, so one implementation
+# serves the PC actuator, the QNX actuator and the simulator. The explicit
+# prerequisites keep make aware of a source the wildcards above do not list.
+SIM_SRC += actuator/journal_writer.c
+SIMULATE_SRC += actuator/journal_writer.c
+$(BUILD)/relais-simulate $(BUILD)/test_protocol $(BUILD)/test_law $(BUILD)/test_ota: \
+    actuator/journal_writer.c actuator/journal_writer.h
+
 # --- M20: byzantine frame injector and attack bench (host/byzantine) ---
 # Append-only block: the unit test core/tests/test_byzantine.c is already picked
 # up by the TEST_BIN wildcard above, so only the standalone bench is added here.

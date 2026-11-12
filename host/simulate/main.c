@@ -13,8 +13,11 @@
  */
 #include "sim.h"
 
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+#include "journal_writer.h"
 
 static void usage(void) {
   fprintf(stderr,
@@ -22,6 +25,14 @@ static void usage(void) {
           "       [--trajectory SPEC] [--fault at:kind:node[:arg[:value]]]\n"
           "       [--level socle|complet] [--journal FILE] [--twin-journal FILE]\n"
           "       [--loss 0.0] [--delay N] [--auto-faults N] [--quiet]\n");
+}
+
+/* Name the last fingerprint of a journal, so a run can be sealed outside it. */
+static void print_anchor(const char *what, const relais_jw *w, bool written) {
+  if (!written) return;
+  char anchor[RELAIS_CHAIN_HEX + 1];
+  if (relais_jw_anchor(w, anchor, sizeof anchor) < 0) return;
+  printf("%s chain anchor: %s (%zu records)\n", what, anchor, w->records);
 }
 
 int main(int argc, char **argv) {
@@ -35,6 +46,8 @@ int main(int argc, char **argv) {
   uint32_t delay = 0;
   const char *journal = NULL;
   const char *twin_journal = NULL;
+  relais_key chain_key;
+  relais_key_clear(&chain_key);
   const char *scenario = "simulate";
   uint32_t scenario_id = 0;
   char param_spec[128] = "";
@@ -67,7 +80,9 @@ int main(int argc, char **argv) {
       auto_faults = (uint32_t)strtoul(argv[++i], NULL, 10);
     else if (strcmp(a, "--scenario") == 0 && i + 1 < argc) scenario = argv[++i];
     else if (strcmp(a, "--id") == 0 && i + 1 < argc) scenario_id = (uint32_t)strtoul(argv[++i], NULL, 10);
-    else if (strcmp(a, "--quiet") == 0) quiet = true;
+    else if (strcmp(a, "--chain-key") == 0 && i + 1 < argc) {
+      if (!relais_key_from_hex(&chain_key, argv[++i])) { usage(); return 2; }
+    } else if (strcmp(a, "--quiet") == 0) quiet = true;
     else { usage(); return 2; }
   }
 
@@ -109,8 +124,13 @@ int main(int argc, char **argv) {
 
   FILE *fj = journal != NULL ? fopen(journal, "w") : NULL;
   FILE *ft = twin_journal != NULL ? fopen(twin_journal, "w") : NULL;
-  if (fj != NULL) sim_write_header(fj, &world, scenario, scenario_id);
-  if (ft != NULL) sim_write_header(ft, &twin, scenario, scenario_id);
+  /* Both journals are chained (idea 34): one writer state per stream, so the
+   * fingerprint of a record always covers the record written just before it. */
+  relais_jw wj, wt;
+  relais_jw_open(&wj, fj, &chain_key);
+  relais_jw_open(&wt, ft, &chain_key);
+  if (fj != NULL) relais_jw_write_header(&wj, &world.params, scenario, scenario_id);
+  if (ft != NULL) relais_jw_write_header(&wt, &twin.params, scenario, scenario_id);
 
   relais_inv inv;
   relais_inv_init(&inv, &params);
@@ -173,16 +193,22 @@ int main(int argc, char **argv) {
     relais_inv_end_tick(&inv, tick);
 
     if (fj != NULL) {
-      sim_write_events(fj, &out, tick);
-      sim_write_tick(fj, &out, tick, &world.plant, out.statut.meas.setpoint);
+      relais_jw_write_events(&wj, &out, (relais_tick)tick);
+      relais_jw_write_tick(&wj, &out, (relais_tick)tick, &world.plant,
+                           out.statut.meas.setpoint);
     }
     if (ft != NULL) {
-      sim_write_events(ft, &twin_out, tick);
-      sim_write_tick(ft, &twin_out, tick, &twin.plant, twin_out.statut.meas.setpoint);
+      relais_jw_write_events(&wt, &twin_out, (relais_tick)tick);
+      relais_jw_write_tick(&wt, &twin_out, (relais_tick)tick, &twin.plant,
+                           twin_out.statut.meas.setpoint);
     }
   }
   if (fj != NULL) fclose(fj);
   if (ft != NULL) fclose(ft);
+  /* The anchor is printed even in quiet mode: it is the only evidence that can
+   * reveal a truncated tail, so it must be recorded outside the journal. */
+  print_anchor("journal", &wj, fj != NULL);
+  print_anchor("twin", &wt, ft != NULL);
 
   char report[RELAIS_INV_MSG_MAX * 2];
   relais_inv_report(&inv, report, sizeof report);
