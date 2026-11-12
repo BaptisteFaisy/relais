@@ -1,0 +1,140 @@
+name: qnx-demo-live
+
+# Rejoue la démo « deux machines, QNX » sur un cycle régulier et publie un résumé
+# JSON que la page publique relit en direct : ce que le site montre est donc le
+# DERNIER passage réel, pas un enregistrement figé.
+#
+# Le JSON est publié sur une branche `live` ; la page le lit sur
+# raw.githubusercontent.com. Aucun serveur n'est nécessaire : GitHub Pages est
+# statique, et ce mode ne dépend que de ce que GitHub sait déjà servir.
+#
+# La branche `live` ne contient QUE ce fichier : c'est un artefact de publication,
+# pas une branche de travail.
+
+on:
+  schedule:
+    # chaque heure, à une heure ronde décalée pour ne pas tomber avec le reste
+    - cron: "17 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: qnx-demo-live
+  cancel-in-progress: false
+
+jobs:
+  live:
+    name: Rejouer la démo QNX et publier le résumé
+    runs-on: [self-hosted, linux, x64, relais-worker]
+    # Hors pull_request : la garde de 5 min ne s'applique pas (voir
+    # .github/ci-budget/check_timeouts.py, qui autorise un budget explicite et
+    # justifié hors PR). Un build QNX + une image + un boot + la démo demande
+    # ~4 min ; on garde 15 min de marge.
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Détecter le SDP QNX 8.0 et QEMU
+        id: detect
+        shell: bash
+        run: |
+          export PATH="$HOME/.local/bin:$PATH"
+          SDP_ENV=""
+          for candidate in "$HOME/qnx800/qnxsdp-env.sh" \
+                           /opt/qnx800/qnxsdp-env.sh \
+                           /usr/local/qnx/qnxsdp-env.sh; do
+            if [ -f "$candidate" ]; then SDP_ENV="$candidate"; break; fi
+          done
+          if [ -n "$SDP_ENV" ] \
+             && . "$SDP_ENV" >/dev/null 2>&1 \
+             && command -v qcc >/dev/null 2>&1 \
+             && command -v mkqnximage >/dev/null 2>&1 \
+             && command -v qemu-system-x86_64 >/dev/null 2>&1; then
+            echo "sdp=available" >> "$GITHUB_OUTPUT"
+            echo "env=$SDP_ENV" >> "$GITHUB_OUTPUT"
+            echo "SDP + QEMU détectés : $SDP_ENV"
+          else
+            echo "sdp=missing" >> "$GITHUB_OUTPUT"
+            echo "SDP QNX 8.0 ou QEMU absent : la démo live est sautée"
+          fi
+
+      - name: Rejouer la démo (deux machines, QNX, gel QMP)
+        if: steps.detect.outputs.sdp == 'available'
+        shell: bash
+        run: |
+          . "${{ steps.detect.outputs.env }}"
+          export PATH="$HOME/.local/bin:$PATH"
+          make -C target
+          python3 host/bench/qnx_vm.py build
+          make qnx-demo
+          ls -l docs/evidence/qnx-demo-* docs/figures/qnx-demo-proof.svg
+
+      - name: Publier le résumé sur la branche live
+        if: steps.detect.outputs.sdp == 'available'
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import datetime, json, os, pathlib, subprocess
+
+          def lire(nom, defaut=None):
+              chemin = pathlib.Path("docs/evidence") / nom
+              if not chemin.is_file():
+                  return defaut
+              try:
+                  return json.loads(chemin.read_text(encoding="utf-8"))
+              except Exception:
+                  return defaut
+
+          demo = lire("qnx-demo-qnx-demo.json", {}) or {}
+          qmp = lire("qnx-demo-qmp.json", []) or []
+          relais = demo.get("relais", {}) or {}
+          journal = relais.get("journal", {}) or {}
+          handover = relais.get("handover", {}) or {}
+          etats = [c.get("answer", {}).get("status", "") for c in qmp
+                   if isinstance(c, dict) and c.get("command") == "query-status"]
+          resume = {
+              "generated_at": datetime.datetime.now(datetime.timezone.utc)
+                               .replace(microsecond=0).isoformat().replace("+00:00", "Z"),
+              "commit": subprocess.run(["git", "rev-parse", "--short", "HEAD"],
+                                       capture_output=True, text=True).stdout.strip(),
+              "runner": os.environ.get("RUNNER_NAME", ""),
+              "accel": demo.get("accel", ""),
+              "guest_uname": demo.get("guest_uname", ""),
+              "boot_seconds": demo.get("boot_seconds"),
+              "takeover_us": relais.get("takeover_us") or demo.get("takeover_us"),
+              "takeover_ticks": journal.get("takeover_ticks"),
+              "handover": handover,
+              "journal": journal,
+              "verdict": (demo.get("verdict") or {}).get("verdict", ""),
+              "qmp_statuses": [e for e in etats if e],
+              "loadavg": demo.get("loadavg", []),
+              "params": demo.get("params", ""),
+          }
+          sortie = pathlib.Path("docs/evidence/qnx-demo-live.json")
+          sortie.parent.mkdir(parents=True, exist_ok=True)
+          sortie.write_text(json.dumps(resume, indent=2, ensure_ascii=False) + "\n",
+                            encoding="utf-8")
+          print(json.dumps(resume, indent=2, ensure_ascii=False)[:1200])
+          PY
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git checkout --orphan live
+          git add docs/evidence/qnx-demo-live.json
+          git commit -q -m "live: résumé de la dernière démo QNX"
+          git push --force origin live
+          echo "publié sur la branche live"
+
+      - name: Publier les preuves complètes (artefact)
+        if: steps.detect.outputs.sdp == 'available'
+        uses: actions/upload-artifact@v4
+        with:
+          name: qnx-demo-live
+          path: |
+            docs/evidence/qnx-demo-*
+            docs/figures/qnx-demo-*
+          if-no-files-found: error
