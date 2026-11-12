@@ -245,6 +245,16 @@ coverage:
 clean:
 	rm -rf $(BUILD)
 
+# --- Diversity bench (mission M37): common causes, real build variants, design diversity ---
+# Builds every variant of the core this machine can produce (each with its exact
+# compile line and its binary digest), plays one corpus on all of them and compares
+# every decision of every tick bit for bit, then measures what a design-diverse
+# control law costs at the handover (CMD-09, DEG-08). Curated numbers: docs/CCF.md;
+# raw artefacts: build/diversity/. Manual or nightly target: it is NOT a PR job, so
+# the 5 minute CI budget of the other jobs is untouched.
+DIVERSITY_DIR := $(BUILD)/diversity
+DIVERSITY_JOBS ?= 3
+
 # --- Mission M30: the faithful rack model, the observer, the adaptive law ---
 # APPEND-ONLY block: nothing above this line was modified, so the thirteen
 # missions that integrate one after another do not conflict here. The new
@@ -313,7 +323,18 @@ M31_STUDY := host/study
 
 .PHONY: m31 m31-test m31-brake m31-infeasible m31-sensitivity m31-testament m31-dataset transports \
      ports ports-zephyr ports-freertos ports-rust ports-compilers fuzz fuzz-long fuzz-report \
-     demo-policy latency byzantine physics
+     demo-policy latency byzantine physics diversity diversity-variants diversity-compare \
+     diversity-laws
+diversity: diversity-variants diversity-compare diversity-laws
+
+diversity-variants:
+	host/diversity/build_variants.sh --jobs $(DIVERSITY_JOBS) --out $(DIVERSITY_DIR)
+
+diversity-compare: diversity-variants
+	python3 host/diversity/compare.py --out-dir $(DIVERSITY_DIR)
+
+diversity-laws: diversity-variants
+	python3 host/diversity/law_effect.py --out-dir $(DIVERSITY_DIR)
 physics: $(PHYSICS_BIN)
 	python3 host/physics/epsilon_study.py
 byzantine: $(BUILD)/run_byzantine
