@@ -1,0 +1,17 @@
+/* Relais on Zephyr, qemu_x86 (mission M32).
+ *
+ * NOT VERIFIED HERE: this machine has no Zephyr SDK, so this overlay was written
+ * against the documented qemu_x86 device tree (the emulated Intel e1000 NIC that
+ * QEMU connects to its user network) and must be checked against the SDK version
+ * actually used — see docs/PORT-ZEPHYR.md, section "what to adapt".
+ */
+
+&eth0 {
+	status = "okay";
+};
+
+/ {
+	chosen {
+		zephyr,console = &uart1;
+	};
+};
