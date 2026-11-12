@@ -41,6 +41,7 @@ typedef struct {
   relais_plant plant;
   relais_inv inv;
   uint32_t tick;
+  relais_source source; /* where the value applied at this tick came from (spec 4.4) */
   explore_slot slot[EXPLORE_LINKS][EXPLORE_SLOTS];
   bool dead[EXPLORE_NODES];
   uint32_t frozen_until[EXPLORE_NODES];
@@ -77,5 +78,7 @@ bool explore_world_ok(const explore_world *w);
 uint32_t explore_active_faults(const explore_world *w);
 const char *explore_kind_name(explore_kind k);
 const char *explore_link_name(explore_link l);
+/* Half-link as the scenario format of CONTRACT.md names it (link + direction). */
+void explore_link_scenario(int link, const char **name, const char **direction);
 
 #endif /* RELAIS_EXPLORE_WORLD_H */
