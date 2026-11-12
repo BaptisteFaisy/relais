@@ -1,0 +1,122 @@
+
+non UEFI or UEFI+CSM boot
+ACPI table not found (0x4746434d)
+overriding mask for controller 2, vector_base 0
+---> Starting slogger2
+---> Starting PCI Services
+---> Starting fsevmgr
+# ---> Starting devb
+---> Mounting file systems
+Path=0 - Intel 82371SB
+ target=0 lun=0     Direct-Access(0) -          QEMU HARDDISK    Rev: 2.5+
+Path=1 - Intel 82371SB
+ target=0 lun=0            CD-ROM(5) - QEMU     QEMU DVD-ROM     Rev: 2.5+
+---> Mounting file systems
+---> Starting Networking
+---> Starting sshd
+/usr/libexec/sshd-auth does not exist or is not executable
+---> Starting misc
+
+To exit QEMU, type <ctrl>a x
+
+[?7hProcess count:22
+Startup complete
+echo "__RL_S"QN"XH rEelLaiLs_-mR4E6A 8D.Y0._0_ 2"026
+/05-16:2__6RL:_S0HE3LEL_DRETA x86pcDY __x
+86_
+# echo "__RL_S""HELL_READY__"
+__RL_SHELL_READY__
+# /proc/boot/rl-relais-failover.sh relais-actuator rl-node rl-relais-failover 1200 'T=5,p=3,N=8' '' ; echo "__RL_DONE""__"$?
+rl-relais-failover: actuator=relais-actuator node=rl-node probe=rl-relais-failover ticks=1200 params=T=5,p=3,N=8
+QNX relais-m46 8.0.0 2026/06/05-16:26:03EDT x86pc x86_64
+rl-relais: phase=established holder=A mandate=170 certified=none tick=1200
+rl-relais: kill pid=638995 signal=9
+rl-relais: takeover timeout_ms=20000
+rl-relais: verdict revoked=338 granted=340 auto_switch=0 certified_events=0
+rl-relais: handover none (no mandate_auto_switch event)
+rl-relais: journal ticks=2400 records=4764 last_tick=1200 holder=A
+rl-relais: done rc=1
+rl-relais-failover: journal lines: 2383
+rl-relais-failover: events:
+{"kind":"event","tick":1,"ns":0,"event":"fallback_enter","node":"","mandate":0,"detail":0,"text":"fallback_enter","chain":"09bdfd3a38be0130"}
+{"kind":"event","tick":1,"ns":0,"event":"lamp_change","node":"","mandate":0,"detail":2,"text":"lamp_change","chain":"c5d6900d8c1b6605"}
+{"kind":"event","tick":93,"ns":0,"event":"mandate_granted","node":"A","mandate":1,"detail":2,"text":"mandate_granted","chain":"34c8260b5f3d75d6"}
+{"kind":"event","tick":94,"ns":0,"event":"request_denied","node":"A","mandate":1,"detail":0,"text":"request_denied","chain":"8680a50f4f58c277"}
+{"kind":"event","tick":95,"ns":0,"event":"order_rejected","node":"A","mandate":1,"detail":4,"text":"order_rejected","chain":"08dcf76188bf5b76"}
+{"kind":"event","tick":96,"ns":0,"event":"order_rejected","node":"A","mandate":1,"detail":4,"text":"order_rejected","chain":"7949d6dda47bd004"}
+{"kind":"event","tick":97,"ns":0,"event":"order_rejected","node":"A","mandate":1,"detail":4,"text":"order_rejected","chain":"0e5032e4260c5495"}
+{"kind":"event","tick":97,"ns":0,"event":"mandate_revoked","node":"A","mandate":1,"detail":4,"text":"mandate_revoked","chain":"0c916ac176971a48"}
+{"kind":"event","tick":98,"ns":0,"event":"order_rejected","node":"A","mandate":1,"detail":1,"text":"order_rejected","chain":"9f6a018639b531db"}
+{"kind":"event","tick":99,"ns":0,"event":"mandate_granted","node":"A","mandate":2,"detail":2,"text":"mandate_granted","chain":"1b282ee4a51cb7d2"}
+{"kind":"event","tick":100,"ns":0,"event":"request_denied","node":"A","mandate":2,"detail":0,"text":"request_denied","chain":"92a027931793bf2a"}
+{"kind":"event","tick":101,"ns":0,"event":"order_rejected","node":"A","mandate":2,"detail":4,"text":"order_rejected","chain":"9dcc3371027a0404"}
+{"kind":"event","tick":102,"ns":0,"event":"order_rejected","node":"A","mandate":2,"detail":4,"text":"order_rejected","chain":"fbba8da2065c4f12"}
+{"kind":"event","tick":103,"ns":0,"event":"order_rejected","node":"A","mandate":2,"detail":4,"text":"order_rejected","chain":"e24a7dc6ef2fc39a"}
+{"kind":"event","tick":103,"ns":0,"event":"mandate_revoked","node":"A","mandate":2,"detail":4,"text":"mandate_revoked","chain":"5d04091308c0936d"}
+{"kind":"event","tick":104,"ns":0,"event":"order_rejected","node":"A","mandate":2,"detail":1,"text":"order_rejected","chain":"d5ecab090c5d58a3"}
+{"kind":"event","tick":105,"ns":0,"event":"mandate_granted","node":"A","mandate":3,"detail":2,"text":"mandate_granted","chain":"11a0434bd8ee7808"}
+{"kind":"event","tick":106,"ns":0,"event":"request_denied","node":"A","mandate":3,"detail":0,"text":"request_denied","chain":"a956df4da3d108c6"}
+{"kind":"event","tick":107,"ns":0,"event":"order_rejected","node":"A","mandate":3,"detail":4,"text":"order_rejected","chain":"c328691da57857c3"}
+{"kind":"event","tick":108,"ns":0,"event":"order_rejected","node":"A","mandate":3,"detail":4,"text":"order_rejected","chain":"98f2665b39a3356c"}
+{"kind":"event","tick":109,"ns":0,"event":"order_rejected","node":"A","mandate":3,"detail":4,"text":"order_rejected","chain":"4aece455a0400618"}
+{"kind":"event","tick":109,"ns":0,"event":"mandate_revoked","node":"A","mandate":3,"detail":4,"text":"mandate_revoked","chain":"3d2302c80d72e51a"}
+{"kind":"event","tick":110,"ns":0,"event":"order_rejected","node":"A","mandate":3,"detail":1,"text":"order_rejected","chain":"e0f39aa0bcaa5cb5"}
+{"kind":"event","tick":111,"ns":0,"event":"mandate_granted","node":"A","mandate":4,"detail":2,"text":"mandate_granted","chain":"e873ccf66cb6eb12"}
+{"kind":"event","tick":112,"ns":0,"event":"request_denied","node":"A","mandate":4,"detail":0,"text":"request_denied","chain":"c3ff64c63c364b24"}
+{"kind":"event","tick":113,"ns":0,"event":"order_rejected","node":"A","mandate":4,"detail":4,"text":"order_rejected","chain":"a5afc7b119b20506"}
+{"kind":"event","tick":114,"ns":0,"event":"order_rejected","node":"A","mandate":4,"detail":4,"text":"order_rejected","chain":"d1fcf6013f1106ee"}
+{"kind":"event","tick":115,"ns":0,"event":"order_rejected","node":"A","mandate":4,"detail":4,"text":"order_rejected","chain":"10e464da384f5cdf"}
+{"kind":"event","tick":115,"ns":0,"event":"mandate_revoked","node":"A","mandate":4,"detail":4,"text":"mandate_revoked","chain":"7f332c037c3f0317"}
+{"kind":"event","tick":116,"ns":0,"event":"order_rejected","node":"A","mandate":4,"detail":1,"text":"order_rejected","chain":"3ee4054b8817c2db"}
+{"kind":"event","tick":117,"ns":0,"event":"mandate_granted","node":"A","mandate":5,"detail":2,"text":"mandate_granted","chain":"ff06bd0c869c88fa"}
+{"kind":"event","tick":119,"ns":0,"event":"request_denied","node":"A","mandate":5,"detail":0,"text":"request_denied","chain":"68a9f31fbe038f33"}
+{"kind":"event","tick":120,"ns":0,"event":"order_rejected","node":"A","mandate":5,"detail":4,"text":"order_rejected","chain":"690fac878bc3147c"}
+{"kind":"event","tick":121,"ns":0,"event":"order_rejected","node":"A","mandate":5,"detail":4,"text":"order_rejected","chain":"934ec6211853b623"}
+{"kind":"event","tick":121,"ns":0,"event":"mandate_revoked","node":"A","mandate":5,"detail":4,"text":"mandate_revoked","chain":"624d7f417401603a"}
+{"kind":"event","tick":122,"ns":0,"event":"order_rejected","node":"A","mandate":5,"detail":1,"text":"order_rejected","chain":"98fa75cac21e8942"}
+{"kind":"event","tick":123,"ns":0,"event":"order_rejected","node":"A","mandate":5,"detail":1,"text":"order_rejected","chain":"2e67137ecce7125a"}
+{"kind":"event","tick":124,"ns":0,"event":"mandate_granted","node":"A","mandate":6,"detail":2,"text":"mandate_granted","chain":"6d52d5917673ff15"}
+{"kind":"event","tick":126,"ns":0,"event":"request_denied","node":"A","mandate":6,"detail":0,"text":"request_denied","chain":"be0a1be9416f9fa0"}
+{"kind":"event","tick":128,"ns":0,"event":"mandate_revoked","node":"A","mandate":6,"detail":4,"text":"mandate_revoked","chain":"22847286ad3aa970"}
+{"kind":"event","tick":128,"ns":0,"event":"mandate_granted","node":"A","mandate":7,"detail":2,"text":"mandate_granted","chain":"3c249b7365e37445"}
+{"kind":"event","tick":129,"ns":0,"event":"order_rejected","node":"A","mandate":6,"detail":2,"text":"order_rejected","chain":"ceda1f94b519d29b"}
+{"kind":"event","tick":130,"ns":0,"event":"order_rejected","node":"A","mandate":6,"detail":2,"text":"order_rejected","chain":"a096127f7c66a526"}
+{"kind":"event","tick":131,"ns":0,"event":"order_rejected","node":"A","mandate":6,"detail":2,"text":"order_rejected","chain":"f3c074a756eb7837"}
+{"kind":"event","tick":132,"ns":0,"event":"order_rejected","node":"A","mandate":6,"detail":2,"text":"order_rejected","chain":"f15b2e07d28de22c"}
+{"kind":"event","tick":132,"ns":0,"event":"mandate_revoked","node":"A","mandate":7,"detail":4,"text":"mandate_revoked","chain":"f6557cdc9353e223"}
+{"kind":"event","tick":133,"ns":0,"event":"order_rejected","node":"A","mandate":7,"detail":1,"text":"order_rejected","chain":"2c93ef630b0ad53d"}
+{"kind":"event","tick":134,"ns":0,"event":"order_rejected","node":"A","mandate":7,"detail":1,"text":"order_rejected","chain":"fc81ea1d79204bf5"}
+{"kind":"event","tick":135,"ns":0,"event":"order_rejected","node":"A","mandate":7,"detail":1,"text":"order_rejected","chain":"33756bbf02cc5633"}
+{"kind":"event","tick":136,"ns":0,"event":"order_rejected","node":"A","mandate":7,"detail":1,"text":"order_rejected","chain":"4d31aa99d2686177"}
+{"kind":"event","tick":138,"ns":0,"event":"mandate_granted","node":"A","mandate":8,"detail":2,"text":"mandate_granted","chain":"7fed7779b218072c"}
+{"kind":"event","tick":140,"ns":0,"event":"request_denied","node":"A","mandate":8,"detail":0,"text":"request_denied","chain":"5dce6ba4a45f32d7"}
+{"kind":"event","tick":141,"ns":0,"event":"request_denied","node":"A","mandate":8,"detail":0,"text":"request_denied","chain":"e50659615fce63d5"}
+{"kind":"event","tick":142,"ns":0,"event":"mandate_revoked","node":"A","mandate":8,"detail":4,"text":"mandate_revoked","chain":"f4281e8aadeb96e3"}
+{"kind":"event","tick":142,"ns":0,"event":"mandate_granted","node":"A","mandate":9,"detail":2,"text":"mandate_granted","chain":"c48b9086d15ad348"}
+{"kind":"event","tick":143,"ns":0,"event":"request_denied","node":"A","mandate":9,"detail":0,"text":"request_denied","chain":"0046afe0ebe39760"}
+{"kind":"event","tick":144,"ns":0,"event":"request_denied","node":"A","mandate":9,"detail":0,"text":"request_denied","chain":"7a80c56d6d2877a2"}
+{"kind":"event","tick":145,"ns":0,"event":"order_rejected","node":"A","mandate":8,"detail":2,"text":"order_rejected","chain":"4a4410f309219f98"}
+{"kind":"event","tick":146,"ns":0,"event":"order_rejected","node":"A","mandate":8,"detail":2,"text":"order_rejected","chain":"8bfa9bb2145b20d4"}
+{"kind":"event","tick":146,"ns":0,"event":"mandate_revoked","node":"A","mandate":9,"detail":4,"text":"mandate_revoked","chain":"123a46b51141d5a3"}
+{"kind":"event","tick":1200,"ns":0,"event":"mandate_granted","node":"A","mandate":170,"detail":2,"text":"mandate_granted","chain":"7df97cc27676eeb7"}
+{"kind":"tick","tick":1200,"ns":0,"mandate":170,"holder":"A","source":"fallback","value":2.27072e-05,"pos":-2.20398e-05,"vel":-1.80738e-05,"setpoint":-0.00942379,"misses":0,"lamp":"red","cause":"fallback","certified":false,"certified_node":"","stop":false,"chain":"fde251044fede8d5"}
+ticks=1200 violations=0 max_gap=0 (bound 4) max_deviation=0 (bound 0.02) fallback_run=1199 lamp_delay=0 level=socle
+journal: /tmp/relais-actuator.jsonl (2382 records, 1200 ticks)
+rl-relais-failover: verify_socle violations=0
+ticks=1200 violations=0 max_gap=0 (bound 0) max_deviation=0 (bound 0.02) fallback_run=1199 lamp_delay=0 level=complet
+journal: /tmp/relais-actuator.jsonl (2382 records, 1200 ticks)
+rl-relais-failover: verify_complet violations=0
+rl-relais-failover: holder_pid=638995 second_pid=655376 actuator_pid=626704
+rl-relais-failover: node A (killed):
+node A [silence] node=A role=second mandate=0 seen_holder= replica_age=255 bail=115 link=ok without_actuator=yes orders=625 shadows=420 demandes=420 cessions=0 stale=0
+node A [silence] node=A role=second mandate=0 seen_holder= replica_age=255 bail=116 link=ok without_actuator=yes orders=625 shadows=420 demandes=420 cessions=0 stale=0
+rl-relais-failover: node B (the second):
+node B [silence] node=B role=none mandate=0 seen_holder= replica_age=255 bail=226 link=ok without_actuator=yes orders=0 shadows=0 demandes=0 cessions=0 stale=0
+node B [silence] node=B role=none mandate=0 seen_holder= replica_age=255 bail=227 link=ok without_actuator=yes orders=0 shadows=0 demandes=0 cessions=0 stale=0
+rl-relais-failover: node B, in the middle of the run (the replica age):
+node B [silence] node=B role=none mandate=0 seen_holder= replica_age=255 bail=100 link=ok without_actuator=yes orders=0 shadows=0 demandes=0 cessions=0 stale=0
+node B [silence] node=B role=none mandate=0 seen_holder= replica_age=255 bail=101 link=ok without_actuator=yes orders=0 shadows=0 demandes=0 cessions=0 stale=0
+node B [silence] node=B role=none mandate=0 seen_holder= replica_age=255 bail=102 link=ok without_actuator=yes orders=0 shadows=0 demandes=0 cessions=0 stale=0
+node B [silence] node=B role=none mandate=0 seen_holder= replica_age=255 bail=103 link=ok without_actuator=yes orders=0 shadows=0 demandes=0 cessions=0 stale=0
+rl-relais-failover: scenario_complete rc=1
+__RL_DONE__1

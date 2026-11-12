@@ -28,7 +28,7 @@ BENCH="$ROOT/host/bench"
 PYTHON="${PYTHON:-python3}"
 QNX_ENV="$BENCH/qnx_env.py"
 TARGET="$ROOT/target"
-IMAGE_OUT="${RELAIS_QNX_IMAGE_OUT:-$ROOT/build/qnx-image}"
+IMAGE_OUT="${RELAIS_QNX_IMAGE_OUT:-$ROOT/build/qnx-vm}"
 IMAGE_FINAL="$ROOT/image/qnx-ifs.img"
 SCENARIO="${RELAIS_SCENARIO:-scenarios/slalom-nominal.json}"
 MIN_IMAGE_BYTES=$((1024 * 1024))
@@ -81,16 +81,10 @@ build_target() {
 }
 
 # -- image -----------------------------------------------------------------
-produced_image() {
-    # mkqnximage output name varies with the SDP version; pick the largest
-    # plausible bootable artifact produced under the output directory.
-    find "$IMAGE_OUT" -maxdepth 3 -type f \
-        \( -name 'qnx-ifs.img' -o -name '*.ifs' -o -name 'ifs-*.img' \
-           -o -name '*.img' \) -print 2>/dev/null \
-        | while IFS= read -r path; do stat -c '%s %n' "$path"; done \
-        | sort -rn | head -1 | cut -d' ' -f2-
-}
-
+# Real mkqnximage 8.0 flow (verified on the SDP, mission M46): long options
+# only, a VM directory holding local/ + output/, and file injection through
+# local/snippets/ifs_files.custom. The old -B/-S/-f/-t/-o flags never existed
+# in this tool. host/bench/qnx_vm.py drives it; see docs/QNX-RUN.md.
 image_needs_build() {
     [ "${FORCE:-0}" = "1" ] && { hint "FORCE=1: rebuilding"; return 0; }
     [ -f "$IMAGE_FINAL" ] || return 0
@@ -108,26 +102,22 @@ build_image() {
         ok "image $IMAGE_FINAL is up to date; run with FORCE=1 to rebuild"
         return 0
     fi
-    SDP_ENV="$(sdp_env_script)"
-    # shellcheck disable=SC1090
-    source "$SDP_ENV"
-    if ! command -v mkqnximage >/dev/null 2>&1; then
-        die "mkqnximage is not on PATH after sourcing $SDP_ENV -- install the "
-            "SDP host/image utilities."
-    fi
-    mkdir -p "$IMAGE_OUT"
-    mkqnximage -b -v \
-        -B image/fragments/buildfile \
-        -S image/fragments/startup.script \
-        -f image/fragments/identity.sh \
-        -f image/fragments/ham.script \
-        -f image/fragments/security_policy.xml \
-        -t qemu-x86_64 -o "$IMAGE_OUT"
-    produced="$(produced_image)"
-    [ -n "$produced" ] || die "mkqnximage ran but produced no .ifs/.img under " \
-        "$IMAGE_OUT -- check its -v output above."
-    install -m 0644 "$produced" "$IMAGE_FINAL"
-    ok "image written to $IMAGE_FINAL (from $produced)"
+    # Inject the target/ binaries listed in the mapping, when they exist
+    # (missing ones are M45's business: the base image still builds).
+    adds=()
+    while IFS= read -r line; do
+        line="${line%%#*}"
+        case "$line" in *=*) ;; *) continue ;; esac
+        name="${line%%=*}"; host="${line#*=}"
+        [ -e "$ROOT/$host" ] && adds+=(--add "$name=$ROOT/$host")
+    done < "$ROOT/image/fragments/vm_files.relais"
+    [ ${#adds[@]} -gt 0 ] || hint "no target/ binaries yet (see M45): " \
+        "building the base image only"
+    "$PYTHON" "$BENCH/qnx_vm.py" --vm-dir "$IMAGE_OUT" build "${adds[@]}" \
+        || die "qnx_vm.py build failed (mkqnximage output above)"
+    [ -f "$IMAGE_OUT/output/ifs.bin" ] || die "no ifs.bin under $IMAGE_OUT"
+    install -m 0644 "$IMAGE_OUT/output/ifs.bin" "$IMAGE_FINAL"
+    ok "image written to $IMAGE_FINAL (from $IMAGE_OUT/output/ifs.bin)"
 }
 
 # -- verify ----------------------------------------------------------------

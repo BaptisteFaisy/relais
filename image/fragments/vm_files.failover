@@ -1,0 +1,10 @@
+# Relais M46 — file mappings for the mkqnximage VM (host/bench/qnx_vm.py).
+#
+# Format: <image_name>=<host_path relative to the repo root> (one per line,
+# '#' comments). qnx_vm.py turns these into local/snippets/ifs_files.custom
+# entries with the mkifs-safe syntax ([type=file] + [perms=0755], never
+# [+script] on an ELF binary — it prepends a shebang and corrupts the file).
+# Injected files land in /proc/boot/<image_name>, which is on the guest PATH.
+
+rl-fail=build/qnx-vm-bin/rl-fail
+rl-failover.sh=image/fragments/rl-failover.sh

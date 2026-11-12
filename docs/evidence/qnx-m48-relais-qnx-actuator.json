@@ -1,0 +1,57 @@
+{
+  "accel": "kvm",
+  "boot_seconds": 13.2,
+  "guest_status": 1,
+  "host_engaged": "QEMU 8.2.2 + KVM, QNX 8.0 guest, serial console",
+  "guest_uname": "QNX relais-m46 8.0.0 2026/06/05-16:26:03EDT x86pc x86_64",
+  "actuator": "relais-actuator",
+  "relais": {
+    "kill": {
+      "pid": "638995",
+      "signal": "9"
+    },
+    "takeover": {
+      "timeout_ms": "20000"
+    },
+    "verdict": {
+      "revoked": "338",
+      "granted": "340",
+      "auto_switch": "0",
+      "certified_events": "0"
+    },
+    "handover": {},
+    "journal": {
+      "ticks": "2400",
+      "records": "4764",
+      "last_tick": "1200",
+      "holder": "A"
+    },
+    "done": {
+      "rc": "1"
+    }
+  },
+  "failover": {
+    "journal": {},
+    "verify_socle": {
+      "violations": "0"
+    },
+    "verify_complet": {
+      "violations": "0"
+    },
+    "node": {},
+    "scenario_complete": {
+      "rc": "1"
+    }
+  },
+  "invariants": {
+    "socle": "0",
+    "complet": "0"
+  },
+  "host_loadavg": [
+    15.12,
+    11.66,
+    12.09
+  ],
+  "transcript": "/tmp/rl-w46/runs/qnx-vm/console.log",
+  "qemu_command": "/usr/bin/qemu-system-x86_64 -smp 2 -m 1G -enable-kvm -cpu host -kernel /tmp/rl-w46/build/qnx-vm/output/ifs.bin -drive file=/tmp/rl-w46/build/qnx-vm/output/disk-qemu.vmdk,if=ide,id=drv0 -netdev user,id=net0,host=10.0.2.2 -device virtio-net-pci,netdev=net0,mac=52:54:00:46:4d:36 -object rng-random,filename=/dev/urandom,id=rng0 -device virtio-rng-pci,rng=rng0 -chardev socket,id=ser0,path=/tmp/rl-w46/runs/qnx-vm/console.sock,server=on,wait=off -serial chardev:ser0 -qmp unix:/tmp/rl-w46/runs/qnx-vm/qmp.sock,server=on,wait=off -display none -monitor none -pidfile /tmp/rl-w46/runs/qnx-vm/qemu.pid"
+}
