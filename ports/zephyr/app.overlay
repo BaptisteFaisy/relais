@@ -1,0 +1,6 @@
+/* Relais on Zephyr — board-independent overlay (mission M32).
+ *
+ * Kept deliberately empty of hardware: the port needs one network interface and
+ * one console, both of which the board file provides. Adding a node here would
+ * be a guess about a board this port does not claim to support.
+ */

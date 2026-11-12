@@ -1,0 +1,29 @@
+[package]
+name = "relais-arbiter"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.70"
+description = "Relais arbiter reimplemented in Rust: no allocation, no clock, no I/O (mission M32, idea 74)"
+license = "MIT"
+
+[lib]
+name = "relais_arbiter"
+path = "src/lib.rs"
+
+[[bin]]
+name = "relais-bridge-rs"
+path = "src/bin/bridge.rs"
+required-features = ["std"]
+
+[features]
+default = ["std"]
+# The library itself is no_std and allocation free. `std` is needed only by the
+# differential-test bridge (stdin/stdout) and by its JSON reader.
+std = []
+
+[profile.release]
+opt-level = 2
+panic = "abort"
+
+[dependencies]
+# none: a port that pulls crates is not a portability proof

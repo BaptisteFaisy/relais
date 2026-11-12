@@ -1,0 +1,38 @@
+# Relais on Zephyr — application options (mission M32, idea 73).
+#
+# The protocol parameters themselves (T, p, N, epsilon, delta...) are NOT here:
+# they belong to core/src/params.c and are identical on every target. Only the
+# wiring of this board is configurable.
+
+menu "Relais protocol node"
+
+config RELAIS_ACTUATOR
+	string "Actuator endpoint, host:port"
+	default "192.168.1.10:7200"
+	help
+	  Where ORDRE, OMBRE, DEMANDE and CESSION are sent, and where STATUT
+	  comes from (spec 4.9, link 0 of the transport).
+
+config RELAIS_PEER
+	string "Peer computer endpoint, host:port"
+	default "192.168.1.12:7202"
+	help
+	  Where ETAT and SUIVI go (spec 4.9, link 1 of the transport).
+
+config RELAIS_LOCAL_PORT
+	int "Local UDP port to bind"
+	default 7201
+	range 1024 65535
+
+config RELAIS_NODE_A
+	bool "This board is computer A (otherwise B)"
+	default y
+
+config RELAIS_LOG_LEVEL
+	int "Log level: 0 off, 1 error, 2 warning, 3 info, 4 debug"
+	default 3
+	range 0 4
+
+endmenu
+
+source "Kconfig.zephyr"

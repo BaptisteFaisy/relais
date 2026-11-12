@@ -1,0 +1,20 @@
+/* Relais on Zephyr, native_posix / native_sim (mission M32).
+ *
+ * native_posix has no device-tree network interface: it reaches the host stack
+ * through the TAP driver enabled in prj.conf (CONFIG_ETH_NATIVE_TAP), which
+ * creates a `tap0` interface on the host when the binary runs as root. That is
+ * the mode in which this port can be exercised against the PC bench:
+ *
+ *   sudo ./build/zephyr/zephyr.exe -tap_dev_name tap0
+ *   python3 host/bench/relais_bench.py --scenario scenarios/slalom-nominal.json
+ *
+ * with the actuator endpoint of Kconfig pointed at the host side of the TAP.
+ *
+ * NOT VERIFIED HERE: no Zephyr SDK on this machine (docs/PORT-ZEPHYR.md).
+ */
+
+/ {
+	chosen {
+		zephyr,console = &posix_native_console;
+	};
+};

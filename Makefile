@@ -178,6 +178,27 @@ coverage:
 clean:
 	rm -rf $(BUILD)
 
+# --- Portability and transports (mission M32) -------------------------------
+# APPENDED ONLY: nothing above is modified. The transport interface lives in
+# core/include/relais/transport.h, its implementations in host/transport/, and
+# the ports to other RTOS, another language and other compilers in ports/.
+#
+# What is proved here, for real:
+#   build/test_transport        the interface over a memory transport (unit)
+#   build/test_transport_can    the same 200-tick scenario over fragmented CAN
+#   build/transport-udp-check   loopback UDP + the unmodified relais-node
+#   make ports                  Zephyr / FreeRTOS / Rust / other compilers,
+#                               each one honest about what is installed here.
+
+TRANSPORT_INC := -Ihost/transport
+# SocketCAN is compiled when the host really has <linux/can.h>; running it needs
+# a CAN interface, which needs privileges this checkout does not have.
+SOCKETCAN_FLAG := $(shell echo | $(CC) -E -include linux/can.h -x c - >/dev/null 2>&1 \
+                   && echo -DRELAIS_HAVE_SOCKETCAN)
+TRANSPORT_OBJ := $(BUILD)/transport/can_socketcan.o
+CAN_TEST_BIN := $(BUILD)/test_transport_can
+UDP_CHECK_BIN := $(BUILD)/transport-udp-check
+
 -include $(shell find $(BUILD) -name '*.d' 2>/dev/null)
 
 # --- M31: command-robustness studies (APPEND-ONLY; ideas 61,62,66,68,69,70,71) ---
@@ -186,8 +207,50 @@ clean:
 # `make all` first. Fixed seeds: every table is reproducible.
 M31_STUDY := host/study
 
-.PHONY: m31 m31-test m31-brake m31-infeasible m31-sensitivity m31-testament \
-        m31-dataset
+.PHONY: m31 m31-test m31-brake m31-infeasible m31-sensitivity m31-testament m31-dataset transports \
+     ports ports-zephyr ports-freertos ports-rust ports-compilers
+
+all: $(CAN_TEST_BIN) $(UDP_CHECK_BIN) $(TRANSPORT_OBJ)
+
+$(BUILD)/transport/can_socketcan.o: host/transport/can_socketcan.c
+	@mkdir -p $(dir $@)
+	$(CC) $(CFLAGS) $(CPPFLAGS) $(TRANSPORT_INC) $(SOCKETCAN_FLAG) -c $< -o $@
+	@if [ -n "$(SOCKETCAN_FLAG)" ]; then \
+	  echo "  socketcan backend compiled against <linux/can.h>"; \
+	else echo "  socketcan backend skipped: <linux/can.h> absent"; fi
+
+$(CAN_TEST_BIN): host/transport/test_can.c host/transport/can.c \
+    core/tests/test_util.c $(TEST_FIXTURES) $(LIB)
+	@mkdir -p $(dir $@)
+	$(CC) $(CFLAGS) $(CPPFLAGS) -Icore/tests $(TRANSPORT_INC) \
+	  host/transport/test_can.c host/transport/can.c core/tests/test_util.c \
+	  $(TEST_FIXTURES) $(LIB) $(LDLIBS) -o $@
+
+$(UDP_CHECK_BIN): host/transport/udp_check.c host/transport/udp.c $(LIB)
+	@mkdir -p $(dir $@)
+	$(CC) $(CFLAGS) $(CPPFLAGS) $(TRANSPORT_INC) host/transport/udp_check.c \
+	  host/transport/udp.c $(LIB) $(LDLIBS) -o $@
+
+# The three transport proofs, in one command. The UDP one binds ports 7930-7932
+# and starts build/relais-node as a child process.
+transports: $(BUILD)/test_transport $(CAN_TEST_BIN) $(UDP_CHECK_BIN) $(BUILD)/relais-node
+	./$(BUILD)/test_transport
+	./$(CAN_TEST_BIN)
+	./$(UDP_CHECK_BIN)
+
+ports-zephyr:
+	$(MAKE) -C ports/zephyr check
+
+ports-freertos:
+	$(MAKE) -C ports/freertos check
+
+ports-rust:
+	$(MAKE) -C ports/rust check
+
+ports-compilers:
+	ports/compilers/check.sh
+
+ports: ports-zephyr ports-freertos ports-rust ports-compilers
 m31: m31-test m31-brake m31-infeasible m31-sensitivity m31-testament m31-dataset
 	@echo "M31-STUDIES-OK"
 
@@ -208,4 +271,3 @@ m31-testament:
 
 m31-dataset:
 	python3 $(M31_STUDY)/dataset_replay.py --all
-
