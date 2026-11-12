@@ -74,13 +74,19 @@ jobs:
         run: |
           . "${{ steps.detect.outputs.env }}"
           make -C target
-          mkqnximage -b -v \
-            -B image/fragments/buildfile \
-            -S image/fragments/startup.script \
-            -f image/fragments/identity.sh \
-            -f image/fragments/ham.script \
-            -f image/fragments/security_policy.xml \
-            -t qemu-x86_64 -o build/qnx-relais
+          # La meme recette que le banc (host/bench/qnx_vm.py) : on cree
+          # l'image dans son propre dossier, on injecte les binaires QNX par un
+          # snippet mkifs, puis on reconstruit. La commande brute
+          # `mkqnximage -b -o <dossier>` echouait ici : le dossier de sortie
+          # n'est ni une image existante ni vide, et mkqnximage refuse
+          # d'ecraser.
+          python3 host/bench/qnx_vm.py build \
+            --add relais-actuator=target/build/relais-actuator \
+            --add relais-core=target/build/relais-core \
+            --add relais-ctl=target/build/relais-ctl \
+            --add relaisctl=target/build/relaisctl \
+            --add relais-net=target/build/relais-net
+          ls -l build/qnx-vm/output/ifs.bin build/qnx-vm/output/disk-qemu.vmdk
 
       # Publish the image as a workflow artifact, downloadable from the run page.
       - name: Publier l'image QNX (artefact)

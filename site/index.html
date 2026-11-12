@@ -207,6 +207,28 @@ latency stops depending on anything else. That is still
 they are, not as a wish.</p>
 <p><a href="https://github.com/BaptisteFaisy/relais/blob/main/docs/evidence/qnx-rt-profile.json">the two measurement runs, with the host load recorded next to each</a></p>
 </div>
+<h3>The protocol itself, inside that guest</h3>
+<p>Not a model and not a substitute: the real <code>rl-actuator</code> and
+<code>rl-node</code> ran inside the QNX guest with the published parameters
+(T=5, p=3, N=8), the holder was killed <em>from inside the guest</em>, and the
+actuator withdrew the mandate on its own evidence.</p>
+<table>
+<tr><th>What happened</th><th>Measured inside the QNX guest</th></tr>
+<tr><td>boot to a usable shell</td><td class="ok">12.2 s, KVM acceleration</td></tr>
+<tr><td>the holder is SIGKILLed from the guest</td><td class="ok">pid 638995, signal 9</td></tr>
+<tr><td>the actuator notices the silence</td><td class="ok">4 misses — p+1 with p=3, exactly the rule</td></tr>
+<tr><td>the mandate is revoked, then granted</td><td class="ok">at tick 608: A → B, mandate 2, revoked_from A</td></tr>
+<tr><td>the takeover is detected</td><td class="ok">23 362 µs after the kill</td></tr>
+<tr><td>the invariants over 1 200 ticks</td><td class="ok">0 violation, 0 gap, 0 deviation</td></tr>
+</table>
+<p>The journal that guest produced is chained — every record carries the hash of
+the previous one — and the very same file is what the host-side verifier reads
+(<code>verify_socle</code> and <code>verify_complet</code>: 0 violation). The
+protocol did not merely start under QNX: it was killed, and it handed the
+mandate over by itself.</p>
+<p><a href="https://github.com/BaptisteFaisy/relais/blob/main/docs/evidence/qnx-m48-relais-console.log">the guest's console</a> ·
+<a href="https://github.com/BaptisteFaisy/relais/blob/main/docs/evidence/qnx-m48-relais.json">the measured run</a> ·
+<a href="https://github.com/BaptisteFaisy/relais/blob/main/docs/evidence/qnx-m48-relais-qnx-actuator-console.log">the actuator's own output, with the chained records</a></p>
 
 <h2>Run it yourself</h2>
 <pre>git clone https://github.com/BaptisteFaisy/relais.git &amp;&amp; cd relais
