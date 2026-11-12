@@ -1,0 +1,1 @@
+{"kind":"tick","tick":2,"ns":0,"mandate":1,"holder":"A","source":"holder","value":6.7396e-05,"pos":-5.57795e-07,"vel":-2.73247e-05,"setpoint":0.00942439,"misses":0,"lamp":"yellow","cause":"second_uncertified","certified":false,"certified_node":"","stop":false}

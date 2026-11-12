@@ -1,0 +1,1 @@
+{"kind":"event","tick":2,"ns":0,"event":"mandate_granted","node":"A","mandate":1,"detail":2,"text":"mandate_granted"}

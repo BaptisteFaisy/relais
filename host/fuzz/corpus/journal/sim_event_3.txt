@@ -1,0 +1,1 @@
+{"kind":"event","tick":2,"ns":0,"event":"fallback_exit","node":"A","mandate":1,"detail":0,"text":"fallback_exit"}

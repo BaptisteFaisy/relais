@@ -1,0 +1,1 @@
+{"kind":"header","version":1,"mutant":0,"scenario":"slalom-nominal","scenario_id":7,"params":{"T":5,"p":1,"N":8,"certify":3,"bail":4,"eps":0.005,"delta":0.02,"degraded":6000}}

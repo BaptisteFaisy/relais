@@ -1,0 +1,76 @@
+# Relais — dictionary for the frame target (spec 6.1, 6.2).
+#
+# Used by libFuzzer (-dict=host/fuzz/frame.dict) when clang is available; the
+# home-grown generator ignores it and mutates the corpus seeds instead, which
+# already contain every one of these tokens. See docs/FUZZING.md.
+#
+# Header, 24 bytes, big-endian:
+#   magic 4 | version 1 | type 1 | sender 1 | flags 1 | tick 8 | mandate 4
+#   payload_len 2 | reserved 2
+# then the payload of the type, then the 8-byte control (CRC-32C or MAC).
+
+# --- magic and version -------------------------------------------------
+magic="RLS1"
+version="\x01"
+version_next="\x02"
+
+# --- message types (spec 6.2) -----------------------------------------
+type_statut="\x01"
+type_ordre="\x02"
+type_ombre="\x03"
+type_demande="\x04"
+type_cession="\x05"
+type_etat="\x06"
+type_suivi="\x07"
+type_first_unknown="\x00"
+type_last_unknown="\x08"
+
+# --- senders ----------------------------------------------------------
+node_none="\x00"
+node_a="\x01"
+node_b="\x02"
+node_c="\x03"
+node_actuator="\x04"
+node_unknown="\x05"
+
+# --- flags ------------------------------------------------------------
+flag_ready="\x01"
+flag_cession="\x02"
+flag_test="\x04"
+flag_has_order="\x08"
+flag_all="\x0f"
+
+# --- fixed payload lengths, big-endian u16 (the parser rejects a mismatch)
+len_statut="\x00\x18"
+len_ordre="\x00\x25"
+len_ombre="\x00\x05"
+len_demande="\x00\x2b"
+len_cession="\x00\x01"
+len_suivi="\x00\x02"
+len_etat_min="\x00\x05"
+len_etat_max="\x01\x09"
+len_zero="\x00\x00"
+len_max="\xff\xff"
+
+# --- whole plausible headers, to get past the magic in one mutation ----
+ordre_from_a="\x31\x53\x4c\x52\x01\x02\x01\x00\x00\x00\x00\x00\x00\x00\x00\x2a\x00\x00\x00\x03\x00\x25\x00\x00"
+ombre_from_b="\x31\x53\x4c\x52\x01\x03\x02\x00\x00\x00\x00\x00\x00\x00\x00\x2a\x00\x00\x00\x03\x00\x05\x00\x00"
+statut_from_actuator="\x31\x53\x4c\x52\x01\x01\x04\x00\x00\x00\x00\x00\x00\x00\x00\x2a\x00\x00\x00\x03\x00\x18\x00\x00"
+demande_from_b="\x31\x53\x4c\x52\x01\x04\x02\x08\x00\x00\x00\x00\x00\x00\x00\x00\x2b\x00\x00\x00\x03\x00\x2b\x00\x00"
+cession_from_a="\x31\x53\x4c\x52\x01\x05\x01\x02\x00\x00\x00\x00\x00\x00\x00\x00\x2c\x00\x00\x00\x03\x00\x01\x00\x00"
+
+# --- journal tokens (fuzz_journal) ------------------------------------
+json_kind_tick="\"kind\":\"tick\""
+json_kind_event="\"kind\":\"event\""
+json_kind_header="\"kind\":\"header\""
+json_tick="\"tick\":42"
+json_holder="\"holder\":\"A\""
+json_source="\"source\":\"holder\""
+json_certified_true="\"certified\":true"
+json_stop_false="\"stop\":false"
+json_event_name="\"event\":\"mandate_auto_switch\""
+json_params="\"params\":{\"T\":5,\"p\":1,\"N\":8"
+
+# --- arbiter snapshot (MAN-11) ----------------------------------------
+snapshot_magic="RARB"
+snapshot_version="\x01"

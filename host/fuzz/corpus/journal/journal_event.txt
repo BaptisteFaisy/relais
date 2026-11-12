@@ -1,0 +1,1 @@
+{"kind":"event","tick":43,"ns":1700000000005000000,"event":"mandate_auto_switch","node":"B","mandate":4,"detail":2,"text":"mandate_auto_switch"}
