@@ -245,6 +245,74 @@ coverage:
 clean:
 	rm -rf $(BUILD)
 
+# --- M36: bounded exhaustion of the C core, and the tooled half ---
+# The harness in host/modelcheck/ drives the REAL core functions over a
+# finite, published input space and checks the safety properties on every
+# case. Nothing here is added to `all`: the exhaustion is its own target, and
+# the CBMC / Frama-C harnesses are checked for syntax even where the tools are
+# absent (an absent tool is never a red build).
+MODELCHECK_SRC := $(sort $(wildcard host/modelcheck/*.c))
+MODELCHECK_BIN := $(BUILD)/relais-exhaustive
+MODELCHECK_SAN := $(BUILD)/relais-exhaustive-san
+MODELCHECK_CBMC_SRC := $(sort $(wildcard host/modelcheck/cbmc/*.c))
+MODELCHECK_WP_SRC := $(sort $(wildcard host/modelcheck/wp/*.c))
+MODELCHECK_WP_HDR := host/modelcheck/wp/relais_core_spec.h
+MC_CFLAGS := $(CFLAGS) $(CPPFLAGS) -Ihost/modelcheck -Icore/tests
+MC_SYNTAX := -std=c11 -fsyntax-only -Wall -Wextra -Werror -Wshadow -Wconversion \
+             -Wno-sign-conversion -D_POSIX_C_SOURCE=200809L -Icore/include
+
+$(MODELCHECK_BIN): $(MODELCHECK_SRC) core/tests/test_util.c $(LIB)
+	@mkdir -p $(dir $@)
+	$(CC) $(MC_CFLAGS) $^ $(LDLIBS) -o $@
+
+# The same exhaustion under AddressSanitizer + UndefinedBehaviorSanitizer: the
+# parser and the arbiter must not read or write outside their buffers and must
+# not trigger any undefined behaviour. If the sanitizer runtime is missing the
+# pass is skipped and says so.
+exhaustive: $(MODELCHECK_BIN)
+	./$(MODELCHECK_BIN)
+	@if printf 'int main(void){return 0;}' | $(CC) -fsanitize=address,undefined \
+	    -x c - -o $(BUILD)/.sanprobe 2>/dev/null; then \
+	  echo "== M36: the same exhaustion under ASan + UBSan =="; \
+	  $(CC) $(MC_CFLAGS) -fsanitize=address,undefined -fno-sanitize-recover=all \
+	    $(MODELCHECK_SRC) core/tests/test_util.c $(LIB) $(LDLIBS) -o $(MODELCHECK_SAN) \
+	    && ./$(MODELCHECK_SAN); \
+	else echo "MC-SANITIZER absent on this machine: the ASan/UBSan pass is skipped"; fi
+
+# The tooled half: the CBMC harnesses (one file per property) and the
+# Frama-C/WP contracts. The harnesses are always compiled here, so a machine
+# without the tools still proves that they are valid C11; when a tool is
+# present it is run and its verdict published, when it is absent the target
+# says exactly what is missing and how to install it.
+modelcheck:
+	@echo "== M36: syntax of the CBMC harnesses =="
+	@for f in $(MODELCHECK_CBMC_SRC); do \
+	  $(CC) $(MC_SYNTAX) -Ihost/modelcheck/cbmc $$f || exit 1; \
+	  echo "  syntax OK $$f"; \
+	done
+	@echo "== M36: syntax of the Frama-C/WP harnesses and contracts =="
+	@for f in $(MODELCHECK_WP_SRC) $(MODELCHECK_WP_HDR); do \
+	  $(CC) $(MC_SYNTAX) -Wno-unused-parameter -Ihost/modelcheck/wp $$f || exit 1; \
+	  echo "  syntax OK $$f"; \
+	done
+	@echo "== M36: CBMC =="
+	@if command -v cbmc >/dev/null 2>&1; then \
+	  sh host/modelcheck/cbmc/run.sh; \
+	else \
+	  echo "CBMC ABSENT on this machine: the harnesses are ready, nothing is proved here."; \
+	  echo "  install: sudo apt-get install cbmc  (or a release of https://www.cprover.org/cbmc/)"; \
+	  echo "  then   : sh host/modelcheck/cbmc/run.sh"; \
+	fi
+	@echo "== M36: Frama-C / WP =="
+	@if command -v frama-c >/dev/null 2>&1; then \
+	  sh host/modelcheck/wp/run.sh; \
+	else \
+	  echo "frama-c ABSENT on this machine: the contracts and harnesses are ready."; \
+	  echo "  install: sudo apt-get install frama-c-base  (or opam install frama-c)"; \
+	  echo "  then   : sh host/modelcheck/wp/run.sh"; \
+	fi
+	@echo "MC-MODELCHECK-OK"
+
 # --- WCET measured on a target-like machine (mission M40) -------------------
 # APPEND-ONLY block: every line below was added at the end of this Makefile, no
 # existing line was rewritten. host/wcet/probe.c is the portable in-process
