@@ -6,7 +6,7 @@
  * the same way: one implementation, three uses.
  *
  * Usage: relais-verify <journal.jsonl> [--level socle|complet]
- *                      [--fault-free] [--twin <journal.jsonl>]
+ *                      [--fault-free] [--lossy-channel] [--twin <journal.jsonl>]
  *                      [--check-chain] [--chain-key <32 hex>]
  *                      [--expect-chain <16 hex>]
  * Exit code: 0 no violation, 1 violated, 2 bad usage or unreadable file.
@@ -16,6 +16,12 @@
  * edited, deleted or inserted afterwards cannot be hidden. A journal written
  * before the chain existed has no fingerprint at all; it is still read, and the
  * check reports that there was nothing to verify.
+ *
+ * --lossy-channel (mission M38) declares that the journal was produced over a
+ * disturbed channel, exactly like the simulator does when it injects loss or
+ * delay (host/simulate/main.c): the continuity bounds of I4/I5/I9 stay outside
+ * the timing hypothesis (ROB-03, spec 7.3 item 5), the gaps are still measured
+ * and published, and every safety invariant stays enforced.
  */
 #include <math.h>
 #include <stdio.h>
@@ -44,7 +50,7 @@ typedef struct {
 static void usage(const char *prog) {
   fprintf(stderr,
           "usage: %s <journal.jsonl> [--level socle|complet] [--fault-free]\n"
-          "          [--double-fault] [--twin <journal.jsonl>]\n"
+          "          [--double-fault] [--lossy-channel] [--twin <journal.jsonl>]\n"
           "          [--check-chain] [--chain-key <32 hex>]\n"
           "          [--expect-chain <16 hex>]\n", prog);
 }
@@ -228,6 +234,7 @@ typedef struct {
   bool complete;
   bool fault_free;
   bool double_fault;
+  bool lossy_channel; /* M38: the channel itself was degraded on purpose */
   bool check_chain;
 } options_t;
 
@@ -240,6 +247,7 @@ static bool parse_options(int argc, char **argv, options_t *o) {
       o->complete = strcmp(argv[++i], "complet") == 0;
     else if (strcmp(a, "--fault-free") == 0) o->fault_free = true;
     else if (strcmp(a, "--double-fault") == 0) o->double_fault = true;
+    else if (strcmp(a, "--lossy-channel") == 0) o->lossy_channel = true;
     else if (strcmp(a, "--check-chain") == 0) o->check_chain = true;
     else if (strcmp(a, "--chain-key") == 0 && i + 1 < argc) {
       if (!relais_key_from_hex(&o->chain_key, argv[++i])) return false;
@@ -270,6 +278,9 @@ int main(int argc, char **argv) {
   relais_inv_init(&inv, &j.params);
   relais_inv_expect_certified(&inv, opt.complete);
   relais_inv_fault_free(&inv, opt.fault_free);
+  /* M38: a degraded channel puts the continuity bounds of I4/I5/I9 outside the
+   * timing hypothesis (ROB-03); the gaps are still measured and published. */
+  relais_inv_lossy_channel(&inv, opt.lossy_channel);
   if (opt.double_fault) {
     /* A second fault landed before redundancy was back (spec 3.3, F9/F10):
      * the claim is the safe state, not the continuity of the command. */

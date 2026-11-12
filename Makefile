@@ -324,7 +324,9 @@ M31_STUDY := host/study
 .PHONY: m31 m31-test m31-brake m31-infeasible m31-sensitivity m31-testament m31-dataset transports \
      ports ports-zephyr ports-freertos ports-rust ports-compilers fuzz fuzz-long fuzz-report \
      demo-policy latency byzantine physics diversity diversity-variants diversity-compare \
-     diversity-laws
+     diversity-laws impair
+impair: $(BUILD)/relais-actuator $(BUILD)/relais-node $(BUILD)/relais-verify
+	python3 host/impair/run_impaired.py --out $(BUILD)/impair
 diversity: diversity-variants diversity-compare diversity-laws
 
 diversity-variants:

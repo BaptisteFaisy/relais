@@ -1,0 +1,85 @@
+{
+  "version": 1,
+  "description": "Impairment profiles for the user-space UDP relay of mission M38 (host/impair/impair_proxy.py). Every impairment is applied between the real bench processes; the decisions are a pure function of (seed, direction, datagram index). NOT a kernel impairment: see docs/NETWORK-IMPAIRMENT.md for the tc/netem recipe (not executed here) and for the limits.",
+  "directions": ["A_to_act", "B_to_act", "act_to_A", "act_to_B", "A_to_B", "B_to_A"],
+  "params": {"T": 25, "p": 3, "N": 8},
+  "defaults": {},
+  "profiles": [
+    {
+      "name": "nominal",
+      "seed": 3801,
+      "ticks": 400,
+      "description": "Control run: the relay forwards every datagram untouched. Same topology, same wiring, zero impairment.",
+      "impair": {}
+    },
+    {
+      "name": "loss-1pct",
+      "seed": 3802,
+      "ticks": 300,
+      "description": "Uniform random loss, 1 % of the datagrams, in every direction.",
+      "impair": {"*": {"loss": {"mode": "random", "rate": 0.01}}}
+    },
+    {
+      "name": "loss-10pct",
+      "seed": 3803,
+      "ticks": 300,
+      "description": "Uniform random loss, 10 % of the datagrams, in every direction.",
+      "impair": {"*": {"loss": {"mode": "random", "rate": 0.10}}}
+    },
+    {
+      "name": "burst-gilbert",
+      "seed": 3804,
+      "ticks": 300,
+      "description": "Burst loss, Gilbert-Elliott two-state chain in every direction. Mean stay in the good state 1/0.01 = 100 datagrams, mean burst 1/0.25 = 4 datagrams lost at 95 %: longer than the patience p = 3, so mandates must be revoked on the actuator's own evidence.",
+      "impair": {"*": {"loss": {"mode": "gilbert_elliott", "p_good_to_bad": 0.01, "p_bad_to_good": 0.25, "loss_in_good": 0.001, "loss_in_bad": 0.95}}}
+    },
+    {
+      "name": "reorder-deep",
+      "seed": 3805,
+      "ticks": 300,
+      "description": "Deep reordering in every direction: a hold buffer of depth 8 releases a random buffered datagram when full, and flushes anything held for more than 60 ms. No loss, no delay: only the order changes.",
+      "impair": {"*": {"reorder": {"depth": 8, "hold_ms": 60}}}
+    },
+    {
+      "name": "delay-50ms-asym",
+      "seed": 3806,
+      "ticks": 300,
+      "description": "Asymmetric delay: the orders (node to actuator) take 50 ms plus or minus 5 ms, two ticks at T = 25 ms, so they reach the actuator with a stale tick label; the STATUT way back and the peer links stay clean.",
+      "impair": {
+        "A_to_act": {"delay": {"fixed_ms": 50, "jitter_ms": 5}},
+        "B_to_act": {"delay": {"fixed_ms": 50, "jitter_ms": 5}}
+      }
+    },
+    {
+      "name": "duplicate-5pct",
+      "seed": 3807,
+      "ticks": 300,
+      "description": "Duplication: 5 % of the datagrams are sent twice in every direction, the copy 12 ms behind the original, so it lands in the next tick with a stale label.",
+      "impair": {"*": {"duplicate": {"rate": 0.05, "delay_ms": 12}}}
+    },
+    {
+      "name": "corrupt-2pct",
+      "seed": 3808,
+      "ticks": 300,
+      "description": "Byte corruption: 2 % of the datagrams get 1 or 2 bits flipped in every direction. The CRC-32C and the SipHash MAC of the frame must catch every one of them (SEC-01, DET-04).",
+      "impair": {"*": {"corrupt": {"rate": 0.02, "bytes_max": 2}}}
+    },
+    {
+      "name": "truncate-2pct",
+      "seed": 3809,
+      "ticks": 300,
+      "description": "Truncation: 2 % of the datagrams are cut to a random length of at least 8 bytes in every direction. A short frame must be rejected, never applied.",
+      "impair": {"*": {"truncate": {"rate": 0.02, "keep_min": 8}}}
+    },
+    {
+      "name": "blackout-orders",
+      "seed": 3810,
+      "ticks": 300,
+      "description": "The network is too bad to command: every datagram from a node to the actuator is lost (100 %), the STATUT and the peer links stay clean. No mandat can live; the actuator must serve the fallback law and light the lamp, without ever applying a value nobody ordered.",
+      "impair": {
+        "A_to_act": {"loss": {"mode": "random", "rate": 1.0}},
+        "B_to_act": {"loss": {"mode": "random", "rate": 1.0}}
+      }
+    }
+  ]
+}
