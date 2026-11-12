@@ -1,0 +1,127 @@
+{
+  "anomalies": [],
+  "anomaly_count": 0,
+  "duration_s": 1201.4,
+  "effective_minutes": 20.0,
+  "handovers_total": 309,
+  "jobs": 2,
+  "latency": {
+    "factor": 4.0,
+    "metric": "cpu microseconds per 1000 ticks",
+    "reference_p999": 3684.0,
+    "samples": 253,
+    "threshold": 14736.1
+  },
+  "log": "soak.jsonl",
+  "machine_guard": "machine busy (load 92.1 > 20 or 12.3 GB available < 4 GB), campaign shortened from 30 to 20 min",
+  "mandates_total": 282,
+  "mission": "M42",
+  "profiles": [
+    "nominal",
+    "death",
+    "freeze",
+    "cutact",
+    "cutpeer",
+    "slow",
+    "cession",
+    "update",
+    "crash",
+    "restart",
+    "forge",
+    "forgestale",
+    "bias",
+    "lossy",
+    "auto"
+  ],
+  "requested_minutes": 30.0,
+  "rss": {
+    "by_profile": {
+      "auto": {
+        "max_kb": 102216,
+        "min_kb": 82592,
+        "runs": 16
+      },
+      "bias": {
+        "max_kb": 102216,
+        "min_kb": 82592,
+        "runs": 17
+      },
+      "cession": {
+        "max_kb": 102216,
+        "min_kb": 82592,
+        "runs": 17
+      },
+      "crash": {
+        "max_kb": 102216,
+        "min_kb": 82592,
+        "runs": 17
+      },
+      "cutact": {
+        "max_kb": 102216,
+        "min_kb": 82592,
+        "runs": 17
+      },
+      "cutpeer": {
+        "max_kb": 102216,
+        "min_kb": 82592,
+        "runs": 17
+      },
+      "death": {
+        "max_kb": 102216,
+        "min_kb": 20156,
+        "runs": 17
+      },
+      "forge": {
+        "max_kb": 102216,
+        "min_kb": 82592,
+        "runs": 17
+      },
+      "forgestale": {
+        "max_kb": 102216,
+        "min_kb": 82592,
+        "runs": 17
+      },
+      "freeze": {
+        "max_kb": 102216,
+        "min_kb": 82592,
+        "runs": 17
+      },
+      "lossy": {
+        "max_kb": 102216,
+        "min_kb": 82592,
+        "runs": 16
+      },
+      "nominal": {
+        "max_kb": 102216,
+        "min_kb": 20156,
+        "runs": 17
+      },
+      "restart": {
+        "max_kb": 102216,
+        "min_kb": 82592,
+        "runs": 17
+      },
+      "slow": {
+        "max_kb": 102216,
+        "min_kb": 82592,
+        "runs": 17
+      },
+      "update": {
+        "max_kb": 102216,
+        "min_kb": 82592,
+        "runs": 17
+      }
+    },
+    "last_kb": 102216,
+    "max_kb": 102216,
+    "min_kb": 20156,
+    "window": 12
+  },
+  "rules_version": "1.0.0",
+  "runs": 253,
+  "started": "2026-11-12T15:41:48+0100",
+  "status": "completed",
+  "svg": "reliability.svg",
+  "ticks_per_run": 100000,
+  "ticks_total": 25300000
+}
