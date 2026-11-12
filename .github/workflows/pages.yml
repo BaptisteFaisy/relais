@@ -46,6 +46,10 @@ jobs:
             cp docs/figures/qnx-guest/* _site/figures/qnx-guest/
             ls -l _site/figures/qnx-guest
           fi
+          if [ -f docs/figures/qnx-demo-proof.svg ]; then
+            cp docs/figures/qnx-demo-proof.svg _site/figures/
+            ls -l _site/figures/qnx-demo-proof.svg
+          fi
 
       - name: Catalogue des features, généré depuis l'arbre
         run: |

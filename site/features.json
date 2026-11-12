@@ -742,6 +742,26 @@
             "docs/evidence/qnx-m48-relais.json"
           ],
           "proof": "make qnx-relais"
+        },
+        {
+          "title": "Two machines, one actuator, and a real freeze",
+          "summary": "Machine B is a QNX 8.0 guest running the node compiled by qcc; QMP stop freezes the whole guest and the actuator withdraws its mandate on its own evidence after p+1 misses, handing it to the certified second. The takeover is measured and the invariants are read back from the guest's own journal.",
+          "requirements": [
+            "MAN-01",
+            "MAN-04",
+            "DET-03",
+            "QNX-01"
+          ],
+          "docs": [
+            "docs/QNX-DEMO.md"
+          ],
+          "code": [
+            "host/bench/qnx_demo.py",
+            "image/fragments/rl-node-boot.sh",
+            "docs/evidence/qnx-demo-qnx-demo.json",
+            "docs/figures/qnx-demo-proof.svg"
+          ],
+          "proof": "make qnx-demo"
         }
       ]
     },
