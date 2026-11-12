@@ -1,0 +1,43 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="720" height="420" viewBox="0 0 720 420" font-family="sans-serif" font-size="12">
+<rect width="720" height="420" fill="white"/>
+<text x="70" y="18" font-size="14">Certified fraction of the ticks against sensor noise (independent channels)</text>
+<line x1="70" y1="350.0" x2="680" y2="350.0" stroke="#ddd"/>
+<text x="64" y="354.0" text-anchor="end">0.0</text>
+<line x1="70" y1="286.0" x2="680" y2="286.0" stroke="#ddd"/>
+<text x="64" y="290.0" text-anchor="end">0.2</text>
+<line x1="70" y1="222.0" x2="680" y2="222.0" stroke="#ddd"/>
+<text x="64" y="226.0" text-anchor="end">0.4</text>
+<line x1="70" y1="158.0" x2="680" y2="158.0" stroke="#ddd"/>
+<text x="64" y="162.0" text-anchor="end">0.6</text>
+<line x1="70" y1="94.0" x2="680" y2="94.0" stroke="#ddd"/>
+<text x="64" y="98.0" text-anchor="end">0.8</text>
+<line x1="70" y1="30.0" x2="680" y2="30.0" stroke="#ddd"/>
+<text x="64" y="34.0" text-anchor="end">1.0</text>
+<line x1="70.0" y1="30" x2="70.0" y2="350" stroke="#ddd"/>
+<text x="70.0" y="368" text-anchor="middle">0</text>
+<line x1="171.7" y1="30" x2="171.7" y2="350" stroke="#ddd"/>
+<text x="171.7" y="368" text-anchor="middle">1e-05</text>
+<line x1="273.3" y1="30" x2="273.3" y2="350" stroke="#ddd"/>
+<text x="273.3" y="368" text-anchor="middle">3e-05</text>
+<line x1="375.0" y1="30" x2="375.0" y2="350" stroke="#ddd"/>
+<text x="375.0" y="368" text-anchor="middle">1e-04</text>
+<line x1="476.7" y1="30" x2="476.7" y2="350" stroke="#ddd"/>
+<text x="476.7" y="368" text-anchor="middle">3e-04</text>
+<line x1="578.3" y1="30" x2="578.3" y2="350" stroke="#ddd"/>
+<text x="578.3" y="368" text-anchor="middle">1e-03</text>
+<line x1="680.0" y1="30" x2="680.0" y2="350" stroke="#ddd"/>
+<text x="680.0" y="368" text-anchor="middle">3e-03</text>
+<text x="375" y="390" text-anchor="middle">sensor noise sigma (full scale)</text>
+<polyline fill="none" stroke="#1f77b4" stroke-width="2" points="70.0,30.3 171.7,212.4 273.3,341.2 375.0,349.6 476.7,349.8 578.3,349.8 680.0,346.2"/>
+<text x="596" y="30" fill="#1f77b4">epsilon=0.001</text>
+<polyline fill="none" stroke="#ff7f0e" stroke-width="2" points="70.0,30.3 171.7,48.7 273.3,293.0 375.0,347.6 476.7,349.7 578.3,349.8 680.0,346.0"/>
+<text x="596" y="46" fill="#ff7f0e">epsilon=0.002</text>
+<polyline fill="none" stroke="#2ca02c" stroke-width="2" points="70.0,30.3 171.7,30.3 273.3,78.8 375.0,323.7 476.7,348.4 578.3,349.8 680.0,345.6"/>
+<text x="596" y="62" fill="#2ca02c">epsilon=0.005</text>
+<polyline fill="none" stroke="#d62728" stroke-width="2" points="70.0,30.3 171.7,30.3 273.3,30.4 375.0,212.3 476.7,341.2 578.3,349.5 680.0,344.9"/>
+<text x="596" y="78" fill="#d62728">epsilon=0.010</text>
+<polyline fill="none" stroke="#9467bd" stroke-width="2" points="70.0,30.3 171.7,30.3 273.3,30.3 375.0,48.8 476.7,293.0 578.3,347.4 680.0,343.2"/>
+<text x="596" y="94" fill="#9467bd">epsilon=0.020</text>
+<polyline fill="none" stroke="#8c564b" stroke-width="2" points="70.0,30.3 171.7,30.3 273.3,30.3 375.0,30.3 476.7,78.8 578.3,322.5 680.0,334.7"/>
+<text x="596" y="110" fill="#8c564b">epsilon=0.050</text>
+</svg>

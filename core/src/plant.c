@@ -5,16 +5,17 @@
  * fault and the faulted run follow the very same reference (spec 4.8).
  */
 #include "relais/control.h"
+#include "relais/plant_ext.h"
 
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
-/* Actuator: velocity loop of 20 ms, steady rack velocity = PLANT_GAIN * u. */
-#define PLANT_GAIN 4.0f
-#define PLANT_DAMP 1.0f
-#define PLANT_TAU 0.02f
+/* Actuator: velocity loop of 20 ms, steady rack velocity = RELAIS_PLANT_GAIN * u.
+ * The constants live in relais/plant_ext.h, shared with the faithful model of
+ * mission M30, so that both models integrate the very same velocity loop
+ * (one set of numbers, no duplicated magic values). */
 #define TWO_PI 6.283185307179586f
 #define SPEC_BUF 256
 
@@ -34,14 +35,14 @@ void relais_plant_step(relais_plant *pl, float value, float disturbance, float d
   /* Exact integration of the velocity loop: stable for the whole period range
    * the specification allows (CMD-01) and for slow motion (CMD-07), where an
    * explicit Euler step of 50 ms against a 20 ms time constant would oscillate. */
-  float alpha = 1.0f - expf(-dt / PLANT_TAU);
-  float target = (PLANT_GAIN / PLANT_DAMP) * value;
+  float alpha = 1.0f - expf(-dt / RELAIS_PLANT_TAU);
+  float target = (RELAIS_PLANT_GAIN / RELAIS_PLANT_DAMP) * value;
   float acc = (target - pl->vel) * alpha + disturbance * dt;
   if (!isfinite(acc)) acc = 0.0f;
   pl->vel += acc;
   if (!isfinite(pl->vel)) pl->vel = 0.0f;
-  if (pl->vel > 10.0f * PLANT_GAIN) pl->vel = 10.0f * PLANT_GAIN;
-  if (pl->vel < -10.0f * PLANT_GAIN) pl->vel = -10.0f * PLANT_GAIN;
+  if (pl->vel > 10.0f * RELAIS_PLANT_GAIN) pl->vel = 10.0f * RELAIS_PLANT_GAIN;
+  if (pl->vel < -10.0f * RELAIS_PLANT_GAIN) pl->vel = -10.0f * RELAIS_PLANT_GAIN;
   pl->pos += pl->vel * dt;
   if (!isfinite(pl->pos)) pl->pos = 0.0f;
   pl->t += dt;
