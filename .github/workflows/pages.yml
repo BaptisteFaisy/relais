@@ -62,6 +62,18 @@ jobs:
             --level complet --title "Relais — campaign report, regenerated at deploy"
           ls -l _site _site/figures | head -20
 
+      - name: Capture statique du tableau de bord
+        # OBS-08 : une image SVG + une page HTML hors ligne, fabriquées à partir
+        # du journal d'exemple régénéré juste au-dessus (runs/site/death). La
+        # page rejoue le journal tick par tick (bouton play) — utile pour la
+        # vidéo et pour le jury qui n'a pas le dépôt.
+        run: |
+          python3 host/dashboard/snapshot.py \
+            --journal runs/site/death/actuator.jsonl \
+            --twin runs/site/death/twin.jsonl \
+            --svg _site/dashboard.svg --html _site/dashboard.html
+          ls -l _site/dashboard.svg _site/dashboard.html
+
       - uses: actions/upload-pages-artifact@v3
         with:
           path: _site

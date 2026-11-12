@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Relais — live dashboard</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header>
+  <h1>Relais · dashboard</h1>
+  <span class="tag" id="scenario">—</span>
+  <span class="spacer"></span>
+  <div class="status dead" id="status"><span class="dot"></span><span id="status-text">connecting…</span></div>
+</header>
+<div class="wrap">
+
+  <div class="mandate-card">
+    <div><div class="cap">Mandate</div><div class="big" id="mandate">—</div></div>
+    <div><div class="cap">Holder</div><div class="holder-name" id="holder">—</div></div>
+    <div><div class="cap">Command source</div><div class="source-badge none" id="source">none</div></div>
+    <div class="lamp" id="lamp"><div class="bulb"></div><div class="cause" id="cause">—</div></div>
+    <div class="kpi"><div class="num" id="tick">—</div><small>tick</small></div>
+  </div>
+
+  <div class="kpis">
+    <div class="kpi"><div class="num" id="cmd">—</div><small>command · rad</small></div>
+    <div class="kpi"><div class="num" id="pos">—</div><small>position · rad</small></div>
+    <div class="kpi"><div class="num" id="setpoint">—</div><small>setpoint · rad</small></div>
+    <div class="kpi"><div class="num" id="misses">—</div><small>misses in a row</small></div>
+    <div class="kpi"><div class="num" id="twin-dev">—</div><small>deviation vs twin</small></div>
+    <div class="kpi violations zero" id="viol-kpi"><div class="num" id="violations">0</div><small>violations</small></div>
+  </div>
+
+  <div class="chart"><div class="cap">Command value — coloured by source (holder · shadow · testament · fallback)</div><canvas id="cmd-chart"></canvas></div>
+  <div class="chart"><div class="cap">Position</div><canvas id="pos-chart"></canvas></div>
+
+  <div class="replay" id="replay">
+    <button id="play">▶ play</button>
+    <input type="range" id="scrub" min="0" max="0" value="0" step="1">
+    <span class="pos" id="rpos">0 / 0</span>
+  </div>
+
+  <div class="feed"><div class="cap">Takeover events (latest first)</div><ul id="feed"></ul></div>
+
+  <footer><a class="link" href="report.html">campaign report</a> · served read-only by host/dashboard/serve.py — no bench writes</footer>
+</div>
+<script src="app.js"></script>
+</body>
+</html>
