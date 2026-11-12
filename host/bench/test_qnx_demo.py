@@ -111,8 +111,12 @@ class QemuCommandTest(unittest.TestCase):
             for name in ("ifs.bin", "disk-qemu.vmdk"):
                 open(os.path.join(vm_dir, "output", name), "wb").close()
             with tempfile.TemporaryDirectory() as run_dir:
+                # binary= passe un NOM sans le résoudre : le test construit la
+                # ligne de commande mais ne doit pas exiger qemu sur la machine
+                # (le runner CI n'a pas qemu dans son PATH, et n'en a pas besoin
+                # pour construire une image).
                 args, accel = qnx_vm.build_qnx_command(
-                    vm_dir, run_dir,
+                    vm_dir, run_dir, binary="qemu-system-x86_64",
                     hostfwd=["udp:127.0.0.1:%d-:%d" % (qnx_demo.GUEST_FWD_PORT,
                                                        qnx_demo.GUEST_NODE_PORT)])
         joined = " ".join(args)
