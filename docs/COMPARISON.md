@@ -7,6 +7,8 @@ evolve; the source of record for their description is
 actual repositories where noted. `qnx-hotswap` is known only through its
 description, as the specification itself flags.*
 
+*Measured counterpart: the same scenarios, the same faults and the same seeds, played on two implemented baselines (a heartbeat with a watchdog, a lease with a term) — see [`docs/COMPARISON-MEASURED.md`](COMPARISON-MEASURED.md).*
+
 **Standing.** Relais is a demonstrator *aligned with* Annex 6 of UN Regulation
 No. 79. It is **not** compliant, not approved and not certifiable, and every
 latency is a **measured worst case under emulation**, never a proven worst case

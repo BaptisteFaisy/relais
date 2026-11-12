@@ -245,6 +245,27 @@ coverage:
 clean:
 	rm -rf $(BUILD)
 
+# --- Mission M43: the measured comparison with the state of the art ---
+# host/baseline holds one world (harness.c) and three protocols: the real
+# core through relais_backend.c, a heartbeat + watchdog baseline and a
+# lease + term baseline. `compare` plays the same scenarios, the same faults
+# and the same seeds on all three, and rewrites the tables of
+# docs/COMPARISON-MEASURED.md (the document carries the method and the
+# threats on the validity).
+BL_SRC := host/baseline/harness.c host/baseline/world.c host/baseline/relais_backend.c \
+          host/baseline/heartbeat.c host/baseline/lease.c
+BL_TEST_SRC := host/baseline/test_baseline.c
+
+$(BUILD)/relais-baseline: $(BL_SRC) host/baseline/main.c $(LIB)
+	@mkdir -p $(dir $@)
+	$(CC) $(CFLAGS) $(CPPFLAGS) -Ihost/baseline $(BL_SRC) host/baseline/main.c \
+	  $(LIB) $(LDLIBS) -o $@
+
+$(BUILD)/test_baseline: $(BL_TEST_SRC) $(BL_SRC) core/tests/test_util.c $(LIB)
+	@mkdir -p $(dir $@)
+	$(CC) $(CFLAGS) $(CPPFLAGS) -Ihost/baseline -Icore/tests $(BL_TEST_SRC) \
+	  core/tests/test_util.c $(BL_SRC) $(LIB) $(LDLIBS) -o $@
+
 # --- k-induction (mission M44) ---
 # The induction engine reuses the world, the quotient projection and the
 # depth-first search of host/explore; only induction.c is new.
@@ -445,7 +466,12 @@ M31_STUDY := host/study
      ports ports-zephyr ports-freertos ports-rust ports-compilers fuzz fuzz-long fuzz-report \
      demo-policy latency byzantine physics diversity diversity-variants diversity-compare \
      diversity-laws impair golden golden-verify golden-update wcet wcet-probe wcet-test wcet-isolate \
-     wcet-report wcet-portable fmeda induction
+     wcet-report wcet-portable fmeda induction baseline compare
+baseline: $(BUILD)/relais-baseline $(BUILD)/test_baseline
+	@./$(BUILD)/test_baseline
+
+compare: $(BUILD)/relais-baseline
+	python3 host/baseline/compare.py --bin ./$(BUILD)/relais-baseline --reps 30
 
 # The induction engine, faced with the mutants: it must NEVER certify the
 # property of a defective core. The proof has to bite on the real core, not
