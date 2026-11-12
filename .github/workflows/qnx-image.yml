@@ -1,0 +1,106 @@
+name: qnx-image
+
+# Relais idea 58 — build the QNX 8.0 image *when a SDP is actually present*.
+#
+# The QNX Software Development Platform (SDP 8.0) is free through QNX
+# Everywhere but is not redistributable and is not installed on the shared
+# runners. This workflow therefore detects it at runtime:
+#
+#   * SDP found  -> `make -C target`, then `mkqnximage`, then publish the image
+#                   as a workflow artifact.
+#   * SDP absent -> the build and publish steps are SKIPPED (GitHub shows them
+#                   as "skipped", not "failed") and a notice step states exactly
+#                   what is missing and where to obtain it.
+#
+# There is never a red run for the mere absence of the SDP: `skipped` is the
+# honest, commented verdict. Budget guard: timeout-minutes <= 5 (user rule,
+# checked by .github/ci-budget/check_timeouts.py).
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: qnx-image-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  qnx-image:
+    name: qnx-image (build if SDP present, else skip)
+    runs-on: [self-hosted, linux, x64, relais-worker]
+    timeout-minutes: 5
+    steps:
+      - name: Checkout (superficiel)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      # Detect the SDP 8.0: an env + `qcc` + `mkqnximage` all present. The env
+      # script path is passed to the build step through the job outputs, because
+      # a `source` in one step does not survive into the next one.
+      - name: Détecter le SDP QNX 8.0
+        id: detect
+        shell: bash
+        run: |
+          SDP_ENV="${QNX_SDP_ENV:-}"
+          if [ -z "$SDP_ENV" ]; then
+            for candidate in "$HOME/qnx800/qnxsdp-env.sh" \
+                             /opt/qnx800/qnxsdp-env.sh \
+                             /usr/local/qnx/qnxsdp-env.sh; do
+              if [ -f "$candidate" ]; then SDP_ENV="$candidate"; break; fi
+            done
+          fi
+          if [ -n "$SDP_ENV" ] \
+             && . "$SDP_ENV" >/dev/null 2>&1 \
+             && command -v qcc >/dev/null 2>&1 \
+             && command -v mkqnximage >/dev/null 2>&1; then
+            echo "sdp=available" >> "$GITHUB_OUTPUT"
+            echo "env=$SDP_ENV" >> "$GITHUB_OUTPUT"
+            echo "SDP QNX 8.0 détecté : $SDP_ENV"
+          else
+            echo "sdp=missing" >> "$GITHUB_OUTPUT"
+            echo "SDP QNX 8.0 absent : pas de qcc/mkqnximage sur ce runner"
+          fi
+
+      # Build the target processes and the bootable QEMU image. Only when the
+      # SDP is present; otherwise GitHub marks this step "skipped".
+      - name: Construire l'image QNX (needs the SDP)
+        if: steps.detect.outputs.sdp == 'available'
+        shell: bash
+        run: |
+          . "${{ steps.detect.outputs.env }}"
+          make -C target
+          mkqnximage -b -v \
+            -B image/fragments/buildfile \
+            -S image/fragments/startup.script \
+            -f image/fragments/identity.sh \
+            -f image/fragments/ham.script \
+            -f image/fragments/security_policy.xml \
+            -t qemu-x86_64 -o build/qnx-relais
+
+      # Publish the image as a workflow artifact, downloadable from the run page.
+      - name: Publier l'image QNX (artefact)
+        if: steps.detect.outputs.sdp == 'available'
+        uses: actions/upload-artifact@v4
+        with:
+          name: qnx-relais-image
+          path: build/qnx-relais
+          if-no-files-found: error
+
+      # The explicit, commented "skipped" explanation for a runner without SDP.
+      - name: Expliquer l'absence de SDP (skip)
+        if: steps.detect.outputs.sdp == 'missing'
+        shell: bash
+        run: |
+          echo "::notice::QNX SDP 8.0 not found on this runner — image build SKIPPED (by design)."
+          echo "Obtain the SDP free of charge through QNX Everywhere:"
+          echo "  https://www.qnx.com/developers/qnx-everywhere/"
+          echo "Then either:"
+          echo "  1. install it on this runner and set QNX_SDP_ENV (or put qnxsdp-env.sh"
+          echo "     in ~/qnx800/), and re-run this workflow; or"
+          echo "  2. build the image locally — see image/README.md:"
+          echo "     source ~/qnx800/qnxsdp-env.sh && make -C target && mkqnximage ..."

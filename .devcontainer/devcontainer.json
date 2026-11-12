@@ -1,0 +1,21 @@
+{
+  "name": "Relais — reproducible bench",
+  "build": {
+    "dockerfile": "Dockerfile"
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-vscode.cpptools-extension-pack",
+        "ms-python.python"
+      ],
+      "settings": {
+        "editor.tabSize": 4,
+        "files.insertFinalNewline": true
+      }
+    }
+  },
+  "remoteUser": "vscode",
+  "postCreateCommand": "make -j\"$(nproc)\" all && make test && echo 'Relais ready: run `tools/bootstrap.sh` for the full proofs.'",
+  "postStartCommand": "echo 'Relais devcontainer: `tools/bootstrap.sh --dry-run` lists every proof step.'"
+}
