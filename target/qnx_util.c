@@ -4,6 +4,11 @@
  * Requirements covered: QNX-03 (fixed priority, memory locked at start),
  * OBS-01 (slog2), OBS-03 (user events in the kernel trace), INJ-07 (the
  * isa-debug-exit death point).
+ *
+ * Every QNX call below is written against the SDP 8.0 headers, and
+ * host_stub.h transcribes the same prototypes: `make -C target syntax` then
+ * checks the very shapes the real qcc build uses, instead of a private set of
+ * made-up ones.
  */
 #include "relais_qnx.h"
 
@@ -17,15 +22,32 @@
 #include <sys/socket.h>
 #include <unistd.h>
 
+/* A QNX name always starts with '/': the local namespace is rooted there.
+ * One helper, so that "relais-net" and "/relais-net" are the same channel
+ * for every process. */
+static int rl_abs_name(char *buf, size_t cap, const char *name) {
+  if (name == NULL || cap < 2) return -1;
+  int n = snprintf(buf, cap, "%s%s", name[0] == '/' ? "" : "/", name);
+  if (n < 0 || (size_t)n >= cap) return -1;
+  return 0;
+}
+
 /* QNX-03: the critical path must never wait on a page fault, and its priority
  * must not drift. Called once at start-up by each process. */
 void rl_realtime(int priority) {
-#ifdef __QNX__
-  setprio(PRIO_PROCESS, 0, priority);
-  mlockall(MCL_NOWAIT);
-#else
-  (void)priority; /* nothing to raise or lock on the syntax-check host */
-#endif
+  /* QNX 8.0 has no setprio(): the name is absent from the whole SDP, and so
+   * is the setprio(PRIO_PROCESS, 0, prio) shape it was written with. The real
+   * call is the kernel's SchedSet() with SCHED_FIFO, which pins the calling
+   * thread to a fixed priority. */
+  struct sched_param param;
+  memset(&param, 0, sizeof param);
+  param.sched_priority = priority;
+  (void)SchedSet(0, 0, SCHED_FIFO, &param);
+  /* The pages of the critical path are locked, the ones already mapped and the
+   * ones to come. MCL_NOWAIT is a Linux flag with no QNX equivalent: the real
+   * flags are MCL_CURRENT and MCL_FUTURE, and their cost is paid here, at
+   * start-up, on purpose. */
+  (void)mlockall(MCL_CURRENT | MCL_FUTURE);
 }
 
 void rl_log(int severity, const char *fmt, ...) {
@@ -34,11 +56,9 @@ void rl_log(int severity, const char *fmt, ...) {
   va_start(ap, fmt);
   vsnprintf(line, sizeof line, fmt, ap);
   va_end(ap);
-#ifdef __QNX__
-  slog2c(NULL, 0, (uint16_t)severity, "%s", line); /* OBS-01 */
-#else
-  fprintf(stderr, "relais[%d]: %s\n", severity, line);
-#endif
+  /* OBS-01: slog2c takes the finished line as DATA, not as a format: the
+   * message is already formatted above, so no format string is read twice. */
+  (void)slog2c(NULL, 0, (uint8_t)severity, line);
 }
 
 /* OBS-03 / QNX-04: the trace shows the whole path from the received STATUT to
@@ -50,9 +70,8 @@ void rl_trace(const char *fmt, ...) {
   va_start(ap, fmt);
   vsnprintf(line, sizeof line, fmt, ap);
   va_end(ap);
-#ifdef __QNX__
-  trace_logf(0, 0, "%s", line);
-#endif
+  /* trace_logf takes the code and the format: nothing else. */
+  (void)trace_logf(0, "%s", line);
 }
 
 int rl_udp_bind(int port) {
@@ -83,25 +102,32 @@ int rl_udp_peer(const char *spec, void *addr_out, size_t cap) {
   return 0;
 }
 
+/* The attachments must outlive the channels they name: one bounded table, one
+ * entry per channel this process attaches (three at the most: status, temoin
+ * and ctl). */
+static name_attach_t *g_attach[8];
+
 int rl_channel(const char *name) {
-#ifdef __QNX__
-  return name_attach(name, 0);
-#else
-  (void)name;
-  return -1;
-#endif
+  char path[128];
+  if (rl_abs_name(path, sizeof path, name) != 0) return -1;
+  /* name_attach() returns the attachment; the channel id lives inside it. */
+  name_attach_t *att = name_attach(NULL, path, 0);
+  if (att == NULL) return -1;
+  for (size_t i = 0; i < sizeof g_attach / sizeof g_attach[0]; i++) {
+    if (g_attach[i] == NULL) {
+      g_attach[i] = att;
+      return att->chid;
+    }
+  }
+  return -1; /* no room left: the channel would not be usable anyway */
 }
 
 int rl_connect_local(const char *name, int *coid) {
-#ifdef __QNX__
-  int id = name_open(name, 0);
+  char path[128];
+  if (rl_abs_name(path, sizeof path, name) != 0) return -1;
+  int id = name_open(path, 0);
   if (id >= 0 && coid != NULL) *coid = id;
   return id;
-#else
-  (void)name;
-  (void)coid;
-  return -1;
-#endif
 }
 
 /* INJ-07: the machine dies at an exact line of code by writing the
@@ -109,10 +135,7 @@ int rl_connect_local(const char *name, int *coid) {
  * thread by ThreadCtl; if the policy refuses them, the bench kills the guest
  * from outside instead (spec 11, E4). */
 void rl_qemu_exit(uint32_t code) {
-#ifdef __QNX__
-  if (ThreadCtl(_NTO_TCTL_IO, NULL) == 0) out32(0x501u, code | 0x10u);
-#endif
-  (void)code;
+  if (ThreadCtl(_NTO_TCTL_IO, NULL) == 0) out32((uint16_t)0x501u, code | 0x10u);
 }
 
 /* The service tool speaks text on /dev/relais/ctl: one command per line. */

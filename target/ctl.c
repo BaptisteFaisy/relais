@@ -19,7 +19,7 @@
 static relais_ctl_state g_state;
 static relais_params g_params;
 
-static void answer_compute(unsigned id, const rl_compute_msg *req) {
+static void answer_compute(rcvid_t rcvid, const rl_compute_msg *req) {
   rl_value_msg rep;
   memset(&rep, 0, sizeof rep);
   rep.h.type = RL_MSG_VALUE;
@@ -33,10 +33,10 @@ static void answer_compute(unsigned id, const rl_compute_msg *req) {
         relais_ctl_step(&g_state, &req->meas, &g_params), &g_params);
     rep.state_len = relais_ctl_export(&g_state, rep.state, sizeof rep.state);
   }
-  MsgReply(id, (long)sizeof rep, &rep, sizeof rep);
+  MsgReply(rcvid, (long)sizeof rep, &rep, sizeof rep);
 }
 
-static void answer_import(unsigned id, const rl_value_msg *req) {
+static void answer_import(rcvid_t rcvid, const rl_value_msg *req) {
   rl_status_msg rep;
   memset(&rep, 0, sizeof rep);
   rep.h.type = RL_MSG_ACK;
@@ -44,7 +44,43 @@ static void answer_import(unsigned id, const rl_value_msg *req) {
    * keeps what it had rather than jumping to something it cannot trust. */
   bool ok = relais_ctl_import(&g_state, req->state, req->state_len);
   snprintf(rep.text, sizeof rep.text, "%s\n", ok ? "ok" : "refused");
-  MsgReply(id, (long)sizeof rep, &rep, sizeof rep);
+  MsgReply(rcvid, (long)sizeof rep, &rep, sizeof rep);
+}
+
+/* The wait loop: one poll on the channel, no log per tick, no allocation, no
+ * file, so the critical path stays short and deterministic (CMD-04). */
+static void ctl_loop(int channel) {
+  union {
+    rl_hdr h;
+    rl_compute_msg compute;
+    rl_value_msg value;
+  } in;
+  struct pollfd pfd;
+  pfd.fd = channel;
+  pfd.events = POLLIN;
+  for (;;) {
+    int ready = poll(&pfd, 1, -1);
+    if (ready < 0) {
+      if (errno == EINTR) continue;
+      break;
+    }
+    struct _msg_info info;
+    /* MsgReceive() returns the receive id; the byte count is in the info. */
+    rcvid_t rcvid = MsgReceive(channel, &in, sizeof in, &info);
+    if (rcvid == -1) continue;
+    switch (in.h.type) {
+      case RL_MSG_COMPUTE:
+      case RL_MSG_STATUS:
+        answer_compute(rcvid, &in.compute);
+        break;
+      case RL_MSG_VALUE:
+        answer_import(rcvid, &in.value);
+        break;
+      default:
+        MsgError(rcvid, ENOSYS);
+        break;
+    }
+  }
 }
 
 int main(int argc, char **argv) {
@@ -70,37 +106,6 @@ int main(int argc, char **argv) {
 #endif
   rl_log(SLOG2_INFO, "ctl: up, priority %d, T=%u ms", RELAIS_PRIO_CTL,
          (unsigned)relais_params_period_ms(&g_params));
-
-  /* No log per tick, no allocation, no file: the critical path stays short and
-   * deterministic (CMD-04). */
-  union {
-    rl_hdr h;
-    rl_compute_msg compute;
-    rl_value_msg value;
-  } in;
-  struct pollfd pfd;
-  pfd.fd = channel;
-  pfd.events = POLLIN;
-  for (;;) {
-    int ready = poll(&pfd, 1, -1);
-    if (ready < 0) {
-      if (errno == EINTR) continue;
-      break;
-    }
-    unsigned id = 0;
-    if (MsgReceive(channel, &in, sizeof in, &id) != 0) continue;
-    switch (in.h.type) {
-      case RL_MSG_COMPUTE:
-      case RL_MSG_STATUS:
-        answer_compute(id, &in.compute);
-        break;
-      case RL_MSG_VALUE:
-        answer_import(id, &in.value);
-        break;
-      default:
-        MsgError(id, ENOSYS);
-        break;
-    }
-  }
+  ctl_loop(channel);
   return 0;
 }

@@ -92,23 +92,20 @@ static void usage(void) {
           "reports the hole the tempo left (gap, coverage by testament/fallback).\n");
 }
 
-int main(int argc, char **argv) {
-  const char *state = NULL;
-  uint64_t downtime_ms = 0;
-  relais_tick last_tick = RELAIS_TICK_NONE;
-  relais_params params;
-  relais_params_default(&params);
+/* The command line of the warm-restart prover: one helper, so that main()
+ * stays short. */
+static int parse_args(int argc, char **argv, const char **state, uint64_t *downtime_ms,
+                      relais_tick *last_tick, relais_params *params) {
   char why[128] = "";
-
   for (int i = 1; i < argc; i++) {
     const char *a = argv[i];
-    if (strcmp(a, "--state") == 0 && i + 1 < argc) state = argv[++i];
+    if (strcmp(a, "--state") == 0 && i + 1 < argc) *state = argv[++i];
     else if (strcmp(a, "--downtime-ms") == 0 && i + 1 < argc)
-      downtime_ms = (uint64_t)strtoull(argv[++i], NULL, 10);
+      *downtime_ms = (uint64_t)strtoull(argv[++i], NULL, 10);
     else if (strcmp(a, "--last-tick") == 0 && i + 1 < argc)
-      last_tick = (relais_tick)strtoull(argv[++i], NULL, 10);
+      *last_tick = (relais_tick)strtoull(argv[++i], NULL, 10);
     else if (strcmp(a, "--params") == 0 && i + 1 < argc) {
-      if (!relais_params_parse(&params, argv[++i], why, sizeof why)) {
+      if (!relais_params_parse(params, argv[++i], why, sizeof why)) {
         fprintf(stderr, "bad params: %s\n", why);
         return 2;
       }
@@ -117,10 +114,20 @@ int main(int argc, char **argv) {
       return 2;
     }
   }
-  if (state == NULL) {
+  if (*state == NULL) {
     usage();
     return 2;
   }
+  return 0;
+}
+
+int main(int argc, char **argv) {
+  const char *state = NULL;
+  uint64_t downtime_ms = 0;
+  relais_tick last_tick = RELAIS_TICK_NONE;
+  relais_params params;
+  relais_params_default(&params);
+  if (parse_args(argc, argv, &state, &downtime_ms, &last_tick, &params) != 0) return 2;
 
   relais_persist p;
   if (relais_persist_init(&p, state) != 0) {

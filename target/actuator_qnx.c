@@ -138,28 +138,103 @@ static void beat(act_t *cfg, relais_arb *arb, relais_plant *plant, relais_tick t
 
 /* Arm the periodic pulse that gives the tempo. On a QNX build this is a kernel
  * timer; the syntax-check host has no such timer and simply returns. */
-static void arm_tempo(bool realtime, uint32_t period_ms) {
+static void arm_tempo(bool realtime, uint32_t period_ms, int channel) {
 #ifdef __QNX__
   if (!realtime) return;
-  int timer_id = -1;
+  /* A pulse is delivered on a CONNECTION, not on a channel: attach to our own
+   * channel so that the kernel timer has somewhere to send the beat. */
+  int coid = ConnectAttach(_NTO_SIDE_CHANNEL, getpid(), channel, 0, 0);
+  if (coid == -1) {
+    rl_log(SLOG2_ERROR, "actuator: no connection for the tempo pulse");
+    return;
+  }
   struct sigevent ev;
   memset(&ev, 0, sizeof ev);
+  /* SIGEV_PULSE_INIT() lives behind __EXT_QNX, which -D_POSIX_C_SOURCE turns
+   * off, so the fields are filled one by one, with the same shape. */
   ev.sigev_notify = SIGEV_PULSE;
+  ev.sigev_coid = coid;
+  ev.sigev_priority = RELAIS_PRIO_CORE;
   ev.sigev_code = PULSE_TICK;
-  if (TimerCreate(CLOCK_MONOTONIC, &ev, &timer_id) != 0) {
+  ev.sigev_value.sival_ptr = NULL;
+  /* QNX 8.0: TimerCreate() takes the clock and the event, and RETURNS the
+   * timer id; there is no third argument. */
+  int timer_id = TimerCreate(CLOCK_MONOTONIC, &ev);
+  if (timer_id == -1) {
     rl_log(SLOG2_ERROR, "actuator: no kernel timer, the tempo will drift");
     return;
   }
   struct _itimer it;
+  memset(&it, 0, sizeof it);
+  /* On QNX 8.0 the two fields are nsec and interval_nsec. */
   uint64_t period_ns = (uint64_t)period_ms * 1000000ull;
-  it.it_value = period_ns;
-  it.it_interval = period_ns;
-  if (TimerSettime(timer_id, 0, &it, NULL) != 0)
+  it.nsec = period_ns;
+  it.interval_nsec = period_ns;
+  if (TimerSettime((timer_t)timer_id, 0, &it, NULL) == -1)
     rl_log(SLOG2_ERROR, "actuator: timer not armed");
 #else
   (void)realtime;
   (void)period_ms;
+  (void)channel;
 #endif
+}
+
+/* The command line of the actuator: one helper, so that main() stays short.
+ * Returns 0, or 2 when the line is refused (the usage has been printed). */
+static int parse_args(act_t *cfg, int argc, char **argv, int *port) {
+  char why[128] = "";
+  for (int i = 1; i < argc; i++) {
+    const char *a = argv[i];
+    if (!strcmp(a, "--port") && i + 1 < argc) *port = atoi(argv[++i]);
+    else if (!strcmp(a, "--peer") && i + 1 < argc) {
+      if (!parse_peer(argv[++i], cfg)) { usage(); return 2; }
+    } else if (!strcmp(a, "--ticks") && i + 1 < argc) cfg->ticks = (uint32_t)atoi(argv[++i]);
+    else if (!strcmp(a, "--params") && i + 1 < argc) {
+      if (!relais_params_parse(&cfg->params, argv[++i], why, sizeof why)) {
+        fprintf(stderr, "actuator: bad params: %s\n", why);
+        return 2;
+      }
+    } else if (!strcmp(a, "--trajectory") && i + 1 < argc) {
+      if (!relais_traj_parse(&cfg->traj, argv[++i], why, sizeof why)) {
+        fprintf(stderr, "actuator: bad trajectory: %s\n", why);
+        return 2;
+      }
+    } else if (!strcmp(a, "--journal") && i + 1 < argc) {
+      cfg->journal = fopen(argv[++i], "w");
+    } else if (!strcmp(a, "--state") && i + 1 < argc) cfg->state_path = argv[++i];
+    else if (!strcmp(a, "--key") && i + 1 < argc) {
+      if (!relais_key_from_hex(&cfg->key, argv[++i])) { usage(); return 2; }
+    } else if (!strcmp(a, "--chain-key") && i + 1 < argc) {
+      if (!relais_key_from_hex(&cfg->chain_key, argv[++i])) { usage(); return 2; }
+    } else if (!strcmp(a, "--no-realtime")) cfg->realtime = false;
+    else { usage(); return 2; }
+  }
+  if (*port <= 0 || cfg->journal == NULL) { usage(); return 2; }
+  return 0;
+}
+
+/* The beat: one tick per period, the socket and the timer waited on together
+ * (QNX-02). */
+static void actuator_loop(act_t *cfg, relais_arb *arb, relais_plant *plant, int channel) {
+  struct pollfd fds[2];
+  fds[0].fd = cfg->sock;
+  fds[1].fd = channel;
+  fds[0].events = fds[1].events = POLLIN;
+
+  for (relais_tick tick = 1; tick <= (relais_tick)cfg->ticks; tick++) {
+    if (cfg->realtime) {
+      int ready = poll(fds, channel >= 0 ? 2 : 1,
+                       (int)relais_params_period_ms(&cfg->params) * 2);
+      if (ready < 0 && errno != EINTR) break;
+      if (channel >= 0 && (fds[1].revents & POLLIN)) {
+        /* Drain the beat: a pulse left on the channel would keep poll()
+         * readable for ever and turn the tempo into a busy loop. */
+        struct _pulse pulse;
+        (void)MsgReceivePulse(channel, &pulse, sizeof pulse, NULL);
+      }
+    }
+    beat(cfg, arb, plant, tick);
+  }
 }
 
 int main(int argc, char **argv) {
@@ -172,35 +247,7 @@ int main(int argc, char **argv) {
   cfg.ticks = 4000;
   cfg.realtime = true;
   int port = 0;
-  char why[128] = "";
-
-  for (int i = 1; i < argc; i++) {
-    const char *a = argv[i];
-    if (!strcmp(a, "--port") && i + 1 < argc) port = atoi(argv[++i]);
-    else if (!strcmp(a, "--peer") && i + 1 < argc) {
-      if (!parse_peer(argv[++i], &cfg)) { usage(); return 2; }
-    } else if (!strcmp(a, "--ticks") && i + 1 < argc) cfg.ticks = (uint32_t)atoi(argv[++i]);
-    else if (!strcmp(a, "--params") && i + 1 < argc) {
-      if (!relais_params_parse(&cfg.params, argv[++i], why, sizeof why)) {
-        fprintf(stderr, "actuator: bad params: %s\n", why);
-        return 2;
-      }
-    } else if (!strcmp(a, "--trajectory") && i + 1 < argc) {
-      if (!relais_traj_parse(&cfg.traj, argv[++i], why, sizeof why)) {
-        fprintf(stderr, "actuator: bad trajectory: %s\n", why);
-        return 2;
-      }
-    } else if (!strcmp(a, "--journal") && i + 1 < argc) {
-      cfg.journal = fopen(argv[++i], "w");
-    } else if (!strcmp(a, "--state") && i + 1 < argc) cfg.state_path = argv[++i];
-    else if (!strcmp(a, "--key") && i + 1 < argc) {
-      if (!relais_key_from_hex(&cfg.key, argv[++i])) { usage(); return 2; }
-    } else if (!strcmp(a, "--chain-key") && i + 1 < argc) {
-      if (!relais_key_from_hex(&cfg.chain_key, argv[++i])) { usage(); return 2; }
-    } else if (!strcmp(a, "--no-realtime")) cfg.realtime = false;
-    else { usage(); return 2; }
-  }
-  if (port <= 0 || cfg.journal == NULL) { usage(); return 2; }
+  if (parse_args(&cfg, argc, argv, &port) != 0) return 2;
 
   rl_realtime(RELAIS_PRIO_CORE);
   cfg.sock = rl_udp_bind(port);
@@ -218,22 +265,11 @@ int main(int argc, char **argv) {
 
   /* QNX-02: the tempo is a pulse from a kernel timer, not a sleep loop. The
    * socket and the timer are waited on in the same poll, so a frame that
-   * arrives early is never held behind the beat. */
-  arm_tempo(cfg.realtime, relais_params_period_ms(&cfg.params));
+   * arrives early is never held behind the beat. The channel comes first: the
+   * pulse needs a connection to it. */
   int channel = rl_channel("relais-actuator");
-  struct pollfd fds[2];
-  fds[0].fd = cfg.sock;
-  fds[1].fd = channel;
-  fds[0].events = fds[1].events = POLLIN;
-
-  for (relais_tick tick = 1; tick <= (relais_tick)cfg.ticks; tick++) {
-    if (cfg.realtime) {
-      int ready = poll(fds, channel >= 0 ? 2 : 1,
-                       (int)relais_params_period_ms(&cfg.params) * 2);
-      if (ready < 0 && errno != EINTR) break;
-    }
-    beat(&cfg, &arb, &plant, tick);
-  }
+  arm_tempo(cfg.realtime, relais_params_period_ms(&cfg.params), channel);
+  actuator_loop(&cfg, &arb, &plant, channel);
 
   save_state(&cfg, &arb);
   char anchor[RELAIS_CHAIN_HEX + 1];
