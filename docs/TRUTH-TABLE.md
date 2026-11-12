@@ -49,6 +49,21 @@ INJ-02…INJ-05, instant sweep INJ-08, death points P1–P9 INJ-07), mutants M1�
 | F10 | Death of both machines | Safe state of the actuator | 12 |
 | F11 | Failure of the actuator itself | Out of scope (extension: two channels, ACT-10 / MAN-13) | — |
 
+## Lifecycle and time faults (mission M19, `host/faultlife/`)
+
+Faults of the machine's life cycle and of time, modelled in `host/faultlife/`
+(a world that drives the same pure core with a per-machine clock, an in-flight
+byte stream, a boot cadence, a demand storm and an OTA life cycle). Each is
+exercised by `host/faultlife/test_faultlife.c` (`make test`).
+
+| # | Fault (idea) | What the actuator sees | What the other machine sees | Expected outcome | Invariants | Requirements | Covered by |
+|---|---|---|---|---|---|---|---|
+| 14 | Machine clock skewed: 2x fast, 2x slow, or jumps after a gel (13) | Valid orders still stamped with the actuator's tick; nothing abnormal | Nothing | The actuator's decision (mandate, holder, source) is **identical** in all four clock scenarios — 0 diverging ticks over 90; only the node's bail diagnostic (MAN-09) fires earlier/later. The protocol reads **no machine clock**: `relais_arb_step` takes only `(tick, frames, meas)`. | I1, I2, I3, I7 | MAN-02, MAN-04, MAN-09, DET-07, ACT-09 | `test_faultlife` (`test_clock_skew`) |
+| 15 | Brutal power loss, possibly mid-send: the frame in flight is truncated (14) | A partial frame (bad length / CRC) or nothing | The holder vanishes without cession | Every truncated prefix is rejected (69/69 over a 69-byte order, DET-04) and never applied; the loss mid-send still hands over to the certified second within p+2 (measured: 1 tick), no double command, 0 invariant violations against the twin. | I1, I2, I3, I4, I5 | DET-04, SEC-01, REL-01, MAN-04, ROB-09 | `test_faultlife` (`test_frame_truncation`, `test_power_loss_mid_send`) |
+| 16 | Boot loop: a machine restarts every k periods, k = 2..50 (15) | The looping machine's orders/shadows stop during each reboot | The peer keeps commanding | The mandate does **not** oscillate with the reboots: second loops -> 0 changes (holder A stays); holder loops -> exactly 1 change (A->B), then stable on the peer for 1000 ticks. The looping machine is re-eligible only after re-certification (DEG-07). | I1, I2, I3 | DEG-07, MAN-10, REP-05, ROB-06 | `test_faultlife` (`test_boot_loop`) |
+| 17 | Demand storm: a machine demands every tick, both machines demand (19) | A flood of DEMANDE frames | The holder is unaffected | The holder's orders keep being served every tick (500/500, source=holder, no induced delay); the arbiter scans one demande per tick so the queue never overflows (0 drops); refused vs granted measured (499 refused / 1 granted). The SEC-06 burst cap is defence-in-depth (exercised by mutant M3 and the 3-node case). | I1, I7 | SEC-06, MAN-05, REL-04 | `test_faultlife` (`test_demand_storm`) |
+| 18 | OTA update (cession, shutdown, restart) interrupted at each step (20) | A cession, then the machine dies mid-send | The peer takes over | At every one of the five interruption points the outcome is a foreseen state: one machine commands (B), never a double command, never a lost mandate while a machine is alive and certified; the mandate number never goes backwards. | I1, I2, I3 | REL-06, REL-09, MAN-11, DET-05, DEG-07 | `test_faultlife` (`test_ota_interrupted`) |
+
 ## Notes
 
 - **The outcome never depends on the machines' agreement.** In every case
