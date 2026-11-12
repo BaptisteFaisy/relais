@@ -109,10 +109,18 @@ static void kx_derive_session(const relais_kx *kx, relais_key *out) {
 bool relais_kx_begin(relais_kx *kx, const relais_key *psk, relais_node self,
                      relais_node peer, relais_kx_role role, const void *entropy,
                      size_t entropy_len) {
-  if (kx == NULL || psk == NULL || !psk->enabled) return false;
+  if (kx == NULL) return false;
+  /* Clear FIRST, before any validation. A refused handshake must leave no state
+   * behind: `relais_kx_session_key` only tests kx->done, so a stale non-zero
+   * `done` in a reused or uninitialised struct would hand out stack residue as a
+   * session key. Found by the CI runner (gcc 14.2), whose stack layout differs
+   * from the development host (gcc 13.3): the check at test_keys.c:307 failed
+   * there and passed here, which is exactly the signature of uninitialised state
+   * being read as if it were a completed handshake (SEC-02, SEC-07). */
+  memset(kx, 0, sizeof *kx);
+  if (psk == NULL || !psk->enabled) return false;
   if (self == RELAIS_NODE_NONE || peer == RELAIS_NODE_NONE || self == peer) return false;
   if (entropy == NULL || entropy_len == 0u) return false;
-  memset(kx, 0, sizeof *kx);
   kx->role = role;
   kx->self = self;
   kx->peer = peer;
