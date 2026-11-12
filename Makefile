@@ -179,3 +179,33 @@ clean:
 	rm -rf $(BUILD)
 
 -include $(shell find $(BUILD) -name '*.d' 2>/dev/null)
+
+# --- M31: command-robustness studies (APPEND-ONLY; ideas 61,62,66,68,69,70,71) ---
+# Python studies of host/study/ + physics mirrors of host/physics/. They reuse
+# the built binaries (relais-simulate, relais-verify, relais-bridge): run
+# `make all` first. Fixed seeds: every table is reproducible.
+M31_STUDY := host/study
+
+.PHONY: m31 m31-test m31-brake m31-infeasible m31-sensitivity m31-testament \
+        m31-dataset
+m31: m31-test m31-brake m31-infeasible m31-sensitivity m31-testament m31-dataset
+	@echo "M31-STUDIES-OK"
+
+m31-test:
+	python3 -m unittest discover -s $(M31_STUDY) -p 'test_*.py'
+
+m31-brake:
+	python3 $(M31_STUDY)/brake_campaign.py
+
+m31-infeasible:
+	python3 $(M31_STUDY)/infeasible.py
+
+m31-sensitivity:
+	python3 $(M31_STUDY)/sensitivity.py
+
+m31-testament:
+	python3 $(M31_STUDY)/testament_opt.py
+
+m31-dataset:
+	python3 $(M31_STUDY)/dataset_replay.py --all
+

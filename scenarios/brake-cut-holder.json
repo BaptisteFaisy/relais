@@ -1,0 +1,26 @@
+{
+  "params": {
+    "T": 5,
+    "p": 1,
+    "N": 8
+  },
+  "ticks": 2000,
+  "trajectory": {
+    "kind": "brake",
+    "amp": 1.0,
+    "offset": 0.4,
+    "t_start": 2.0
+  },
+  "id": 15,
+  "name": "brake-cut-holder",
+  "seed": 1015,
+  "faults": [
+    {
+      "at_tick": 500,
+      "type": "cut",
+      "link": "A-actuator",
+      "direction": "both"
+    }
+  ],
+  "note": "Ideas 61/71, CMD-08 + F5/ROB-03: the link between the holder and the actuator is cut in both directions in the middle of the braking ramp. A no longer reaches the actuator and no longer hears it, so it deposes itself after the bail timeout (MAN-09) while the actuator revokes on its own miss count (MAN-02/MAN-04). B takes over and the braking must continue; the study measures the deviation to the deceleration setpoint during the whole episode."
+}

@@ -1,0 +1,19 @@
+{
+  "params": {
+    "T": 5,
+    "p": 1,
+    "N": 8
+  },
+  "ticks": 2000,
+  "trajectory": {
+    "kind": "brake",
+    "amp": 1.0,
+    "offset": 0.4,
+    "t_start": 2.0
+  },
+  "id": 12,
+  "name": "brake-nominal",
+  "seed": 1012,
+  "faults": [],
+  "note": "CMD-08 reference run: the second demonstration profile (a braking ramp) with no fault. The setpoint holds 0.4 for 2 s, ramps down at -1.0/s for 1 s (ticks 402..602), then holds -0.6. This run is the baseline the faulted brake scenarios are compared against, tick for tick."
+}
