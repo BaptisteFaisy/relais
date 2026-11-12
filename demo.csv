@@ -1,0 +1,2 @@
+tick,t_ms,mandate_old,mandate_new,holder_old,holder_new,cause,lamp,fdti_ticks,frti_ticks,source_run,max_dev,max_pos_dev,detail
+502,2510.000,1,2,A,B,death,yellow,2,1,shadow/shadow/holder,0,0,2
