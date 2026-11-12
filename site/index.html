@@ -229,6 +229,47 @@ mandate over by itself.</p>
 <p><a href="https://github.com/BaptisteFaisy/relais/blob/main/docs/evidence/qnx-m48-relais-console.log">the guest's console</a> ·
 <a href="https://github.com/BaptisteFaisy/relais/blob/main/docs/evidence/qnx-m48-relais.json">the measured run</a> ·
 <a href="https://github.com/BaptisteFaisy/relais/blob/main/docs/evidence/qnx-m48-relais-qnx-actuator-console.log">the actuator's own output, with the chained records</a></p>
+<h3>Two machines, one actuator — and one of them really dies</h3>
+<p>Machine A and the actuator run on the host; <strong>machine B is a QNX 8.0
+guest</strong> running the node cross-compiled by the SDP's <code>qcc</code>, and
+reaching the host through the emulator's user-net gateway, the way a board would
+reach the actuator. The fault is a <em>real freeze of the whole guest</em>: QMP
+<code>stop</code> cuts its CPUs, its timers and its network alike, and
+<code>query-status</code> answers <code>paused</code>.</p>
+<pre>tick 1490  misses 0  holder B  source holder   &lt;- last fresh order from B
+tick 1491  misses 1  holder B  source shadow   &lt;- the guest is frozen
+tick 1492  misses 2  holder B  source shadow
+tick 1493  misses 3  holder B  source shadow
+tick 1494  misses 0  holder A  source shadow   &lt;- MANDATE_REVOKED(B) +
+                                                  MANDATE_AUTO_SWITCH(A)
+tick 1495  misses 0  holder A  source holder   &lt;- A commands</pre>
+<table>
+<tr><th>What happened</th><th>Measured</th></tr>
+<tr><td>machine B — the QNX guest — holds the mandate</td><td class="ok">tick 1469</td></tr>
+<tr><td>machine A certified as the second</td><td class="ok">tick 1474</td></tr>
+<tr><td>the whole guest is frozen by QMP</td><td class="ok">tick 1494 — <code>status: paused</code></td></tr>
+<tr><td>the actuator notices the silence</td><td class="ok">4 misses — p+1, exactly the rule</td></tr>
+<tr><td>the takeover</td><td class="ok">tick 1494, 49 994 µs after the freeze</td></tr>
+<tr><td>the invariants, read from the guest's own journal</td><td class="ok">2 486 ticks, 0 violation, gap 0 (bound 4), deviation 0</td></tr>
+</table>
+<figure><img src="figures/qnx-demo-proof.svg" alt="The command curve through the freeze: the source of every tick, the mandate held, and the handover at tick 1494" loading="lazy">
+<figcaption><strong>The proof.</strong> The command curve through the freeze, with the
+source of every tick, the mandate held, and the handover at tick 1494 — drawn from
+the journal the guest produced.</figcaption></figure>
+<p class="note">Three honest limits. The wall-clock figures are the
+<em>emulator's</em>, not hard real time — the safety claim is in ticks, and ticks
+are exact. The QNX screendumps of that guest are <strong>blank</strong>, because
+the image has no graphic driver: they prove nothing by themselves, the proof of
+the freeze is the QMP status, the guest's silence and the counted misses. And the
+bench is a shared machine: at T = 10 ms some of the guest's orders arrive a tick
+late and the certification oscillates, while at T = 5 ms the guest stops
+answering within the tick and I4 is violated — the specification's timing
+hypothesis is not held by a loaded shared machine. That is measured and
+published, not hidden.</p>
+<p><a href="https://github.com/Tradoooo/relais/blob/main/docs/QNX-DEMO.md">the procedure and the numbers</a> ·
+<a href="https://github.com/Tradoooo/relais/blob/main/docs/evidence/qnx-demo-qnx-demo.json">the measured run</a> ·
+<a href="https://github.com/Tradoooo/relais/blob/main/docs/evidence/qnx-demo-qmp.json">the QMP history</a> ·
+<a href="https://github.com/Tradoooo/relais/blob/main/docs/evidence/qnx-demo-actuator.jsonl">the journal itself</a></p>
 
 <h2>Run it yourself</h2>
 <pre>git clone https://github.com/BaptisteFaisy/relais.git &amp;&amp; cd relais
