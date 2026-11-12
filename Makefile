@@ -690,3 +690,12 @@ qnx-failover-stub:
 
 qnx-relais:
 	$(QNX_FAILOVER) relais
+
+# --- M49: the two-machine demo, with a REAL QNX 8.0 as machine B -------------
+# Machine A and the actuator run on the host; machine B is an INVITED QNX 8.0
+# guest frozen for real by QMP `stop`. Needs the SDP 8.0 (~/qnx800) and
+# /dev/kvm; boots ONE VM and stops it before returning (no orphan).
+.PHONY: qnx-demo
+qnx-demo:
+	python3 host/bench/qnx_demo.py --out runs/qnx-demo \
+	  --evidence docs/evidence --figures docs/figures

@@ -1,0 +1,65 @@
+[
+  {
+    "command": "qmp_capabilities",
+    "arguments": {},
+    "answer": {}
+  },
+  {
+    "command": "query-status",
+    "arguments": {},
+    "answer": {
+      "status": "running",
+      "singlestep": false,
+      "running": true
+    }
+  },
+  {
+    "command": "screendump",
+    "arguments": {
+      "filename": "/tmp/rl-w49/runs/qnx-demo/guest-before.png"
+    },
+    "answer": {}
+  },
+  {
+    "command": "stop",
+    "arguments": {},
+    "answer": {}
+  },
+  {
+    "command": "query-status",
+    "arguments": {},
+    "answer": {
+      "status": "paused",
+      "singlestep": false,
+      "running": false
+    }
+  },
+  {
+    "command": "screendump",
+    "arguments": {
+      "filename": "/tmp/rl-w49/runs/qnx-demo/guest-frozen.png"
+    },
+    "answer": {}
+  },
+  {
+    "command": "cont",
+    "arguments": {},
+    "answer": {}
+  },
+  {
+    "command": "query-status",
+    "arguments": {},
+    "answer": {
+      "status": "running",
+      "singlestep": false,
+      "running": true
+    }
+  },
+  {
+    "command": "screendump",
+    "arguments": {
+      "filename": "/tmp/rl-w49/runs/qnx-demo/guest-after.png"
+    },
+    "answer": {}
+  }
+]
