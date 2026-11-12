@@ -1,0 +1,316 @@
+{
+  "version": 1,
+  "note": "Frozen game of the golden traces (mission M35). Every entry is replayed by the seeded simulator (build/relais-simulate), whose journal is normalised then hashed with SHA-256 (tools/golden/traces.json). The 'published' entries replay the scenarios of the repository (scenarios/*.json); the 'golden' entries cover the behaviours the published set does not reach. Seeds, faults and parameters are frozen: changing any of them changes the trace, and the trace is only refreshed on purpose (make golden-update).",
+  "scenarios": [
+    {
+      "name": "published/slalom-nominal",
+      "file": "scenarios/slalom-nominal.json",
+      "level": "complet",
+      "ticks": 2000,
+      "note": "nominal: the holder commands every tick, no fault, the reference of the others (CMD-01)"
+    },
+    {
+      "name": "published/slalom-death-A",
+      "file": "scenarios/slalom-death-A.json",
+      "level": "complet",
+      "ticks": 2000,
+      "note": "the holder dies: the actuator revokes on its own proof, the second takes over (MAN-04, REL-01)"
+    },
+    {
+      "name": "published/slalom-death-B",
+      "file": "scenarios/slalom-death-B.json",
+      "level": "complet",
+      "ticks": 2000,
+      "note": "the second dies: the redundancy is lost, the lamp turns yellow, the command continues (DEG-01)"
+    },
+    {
+      "name": "published/slalom-double-death",
+      "file": "scenarios/slalom-double-death.json",
+      "level": "complet",
+      "ticks": 2000,
+      "note": "both machines die: beyond the single-fault hypothesis the claim is the safe state (spec 3.3)"
+    },
+    {
+      "name": "published/slalom-freeze-A-200ms",
+      "file": "scenarios/slalom-freeze-A-200ms.json",
+      "level": "complet",
+      "ticks": 2000,
+      "note": "the holder is frozen for 200 ms: silence detected, handover on the proof (MAN-04)"
+    },
+    {
+      "name": "published/slalom-freeze-B-1s",
+      "file": "scenarios/slalom-freeze-B-1s.json",
+      "level": "complet",
+      "ticks": 2000,
+      "note": "the second is frozen for 1 s: the certification is lost, then recovered (DEG-07)"
+    },
+    {
+      "name": "published/slalom-cut-A-to-actuator",
+      "file": "scenarios/slalom-cut-A-to-actuator.json",
+      "level": "complet",
+      "ticks": 2000,
+      "note": "link machine -> actuator cut: the holder cannot command, the second is appointed (REL-03)"
+    },
+    {
+      "name": "published/slalom-cut-between-computers",
+      "file": "scenarios/slalom-cut-between-computers.json",
+      "level": "complet",
+      "ticks": 2000,
+      "note": "link between the two computers cut: the shadow is lost, the certification expires (DEG-06)"
+    },
+    {
+      "name": "published/slalom-slow-machine",
+      "file": "scenarios/slalom-slow-machine.json",
+      "level": "complet",
+      "ticks": 2000,
+      "note": "slow machine: one tick out of three is lost, the loop still closes (ROB-03)"
+    },
+    {
+      "name": "published/slalom-sweep-death-all-phases",
+      "file": "scenarios/sweep-death-all-phases.json",
+      "level": "complet",
+      "ticks": 2000,
+      "note": "campaign template of the sweep: the instant of the death is swept over the whole period"
+    },
+    {
+      "name": "published/rolling-update",
+      "file": "scenarios/rolling-update.json",
+      "level": "complet",
+      "note": "both machines updated in turn: clean cession, reboot, re-certification (REL-10, DEG-03, DEG-07)"
+    },
+    {
+      "name": "golden/nominal-socle",
+      "ticks": 1200,
+      "seed": 92001,
+      "level": "socle",
+      "note": "level S: no shadow, the handover goes through the will (REL-03)"
+    },
+    {
+      "name": "golden/cession-holder",
+      "ticks": 800,
+      "seed": 92002,
+      "level": "complet",
+      "faults": [
+        {
+          "at_tick": 400,
+          "type": "handover",
+          "target": "A"
+        }
+      ],
+      "note": "the holder cedes voluntarily: the handover costs one tick (REL-09)"
+    },
+    {
+      "name": "golden/dissimilar-second",
+      "ticks": 1500,
+      "seed": 92003,
+      "level": "complet",
+      "params": {
+        "T": 5,
+        "p": 1,
+        "N": 8,
+        "deps": 0.05,
+        "ddelta": 0.03
+      },
+      "faults": [
+        {
+          "at_tick": 300,
+          "type": "bias",
+          "target": "B",
+          "value": 0.2
+        },
+        {
+          "at_tick": 400,
+          "type": "bias",
+          "target": "B",
+          "value": 0.02
+        },
+        {
+          "at_tick": 900,
+          "type": "death",
+          "target": "A"
+        }
+      ],
+      "note": "dissimilar second: the gap inside the published band certifies a DISSIMILAR backup, the handover admits the dissimilar_delta bump (DEG-08)"
+    },
+    {
+      "name": "golden/mismatch-second",
+      "ticks": 1200,
+      "seed": 92004,
+      "level": "complet",
+      "faults": [
+        {
+          "at_tick": 300,
+          "type": "bias",
+          "target": "B",
+          "value": 0.2
+        }
+      ],
+      "note": "the second computes wrong: three ticks above epsilon, the disagreement is reported and the certification is dropped (DET-09)"
+    },
+    {
+      "name": "golden/sweep-death-phase-0",
+      "ticks": 900,
+      "seed": 92010,
+      "level": "complet",
+      "faults": [
+        {
+          "at_tick": 400,
+          "type": "death",
+          "target": "A"
+        }
+      ],
+      "note": "sweep of the handover, phase 0 of 5 (T = 5 ms)"
+    },
+    {
+      "name": "golden/sweep-death-phase-1",
+      "ticks": 900,
+      "seed": 92011,
+      "level": "complet",
+      "faults": [
+        {
+          "at_tick": 401,
+          "type": "death",
+          "target": "A"
+        }
+      ],
+      "note": "sweep of the handover, phase 1 of 5"
+    },
+    {
+      "name": "golden/sweep-death-phase-2",
+      "ticks": 900,
+      "seed": 92012,
+      "level": "complet",
+      "faults": [
+        {
+          "at_tick": 402,
+          "type": "death",
+          "target": "A"
+        }
+      ],
+      "note": "sweep of the handover, phase 2 of 5"
+    },
+    {
+      "name": "golden/sweep-death-phase-3",
+      "ticks": 900,
+      "seed": 92013,
+      "level": "complet",
+      "faults": [
+        {
+          "at_tick": 403,
+          "type": "death",
+          "target": "A"
+        }
+      ],
+      "note": "sweep of the handover, phase 3 of 5"
+    },
+    {
+      "name": "golden/sweep-death-phase-4",
+      "ticks": 900,
+      "seed": 92014,
+      "level": "complet",
+      "faults": [
+        {
+          "at_tick": 404,
+          "type": "death",
+          "target": "A"
+        }
+      ],
+      "note": "sweep of the handover, phase 4 of 5: every phase of the period is covered"
+    },
+    {
+      "name": "golden/forge-order",
+      "ticks": 1200,
+      "seed": 92015,
+      "level": "complet",
+      "faults": [
+        {
+          "at_tick": 800,
+          "type": "forge",
+          "target": "B",
+          "value": -0.9
+        }
+      ],
+      "note": "the second forges an order with the current mandate: it is dropped (SEC-04)"
+    },
+    {
+      "name": "golden/forge-stale",
+      "ticks": 1200,
+      "seed": 92016,
+      "level": "complet",
+      "faults": [
+        {
+          "at_tick": 800,
+          "type": "forge-stale",
+          "target": "A"
+        }
+      ],
+      "note": "the holder replays an order of a past tick: it is dropped (ACT-09)"
+    },
+    {
+      "name": "golden/lossy-delay",
+      "ticks": 1500,
+      "seed": 92017,
+      "level": "complet",
+      "loss": 0.05,
+      "delay": 1,
+      "faults": [
+        {
+          "at_tick": 700,
+          "type": "death",
+          "target": "A"
+        }
+      ],
+      "note": "lossy channel with jitter: the claim is the safe state, not the continuity (ROB-02, ROB-03)"
+    },
+    {
+      "name": "golden/crash-proc",
+      "ticks": 1200,
+      "seed": 92018,
+      "level": "complet",
+      "faults": [
+        {
+          "at_tick": 500,
+          "type": "crash",
+          "target": "A",
+          "ticks": 10
+        }
+      ],
+      "note": "a process of the holder dies: the machine cedes in the same tick (DET-05, QNX-06)"
+    },
+    {
+      "name": "golden/restart",
+      "ticks": 1200,
+      "seed": 92019,
+      "level": "complet",
+      "faults": [
+        {
+          "at_tick": 600,
+          "type": "restart",
+          "target": "B"
+        }
+      ],
+      "note": "a machine restarts: it comes back empty and must be certified again (DEG-03, ROB-06)"
+    },
+    {
+      "name": "golden/cut-restore",
+      "ticks": 1200,
+      "seed": 92020,
+      "level": "complet",
+      "faults": [
+        {
+          "at_tick": 400,
+          "type": "cut",
+          "target": "A",
+          "link": "A-actuator",
+          "direction": "both"
+        },
+        {
+          "at_tick": 700,
+          "type": "restore",
+          "target": "A"
+        }
+      ],
+      "note": "the link is cut then restored: the certification is lost, then recovered (DEG-06, DEG-07)"
+    }
+  ]
+}

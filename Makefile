@@ -245,6 +245,23 @@ coverage:
 clean:
 	rm -rf $(BUILD)
 
+# --- Golden traces (mission M35) ---
+# The behavioural fingerprint of the core: a FROZEN game of scenarios is
+# replayed by the seeded simulator and every normalised journal is hashed
+# (SHA-256). `golden-verify` is the guard: it must stay green on every pull
+# request. `golden` and `golden-update` REWRITE the versioned reference
+# tools/golden/traces.json: they are deliberate acts (docs/GOLDEN.md).
+golden: $(BUILD)/relais-simulate
+	@echo "capture: the reference tools/golden/traces.json is rewritten"
+	python3 tools/golden/capture.py
+
+golden-verify: $(BUILD)/relais-simulate
+	python3 tools/golden/verify.py
+
+golden-update: $(BUILD)/relais-simulate
+	@echo "deliberate refresh: review the diff of tools/golden/traces.json"
+	python3 tools/golden/verify.py --update
+
 # --- Diversity bench (mission M37): common causes, real build variants, design diversity ---
 # Builds every variant of the core this machine can produce (each with its exact
 # compile line and its binary digest), plays one corpus on all of them and compares
@@ -324,7 +341,7 @@ M31_STUDY := host/study
 .PHONY: m31 m31-test m31-brake m31-infeasible m31-sensitivity m31-testament m31-dataset transports \
      ports ports-zephyr ports-freertos ports-rust ports-compilers fuzz fuzz-long fuzz-report \
      demo-policy latency byzantine physics diversity diversity-variants diversity-compare \
-     diversity-laws impair
+     diversity-laws impair golden golden-verify golden-update
 impair: $(BUILD)/relais-actuator $(BUILD)/relais-node $(BUILD)/relais-verify
 	python3 host/impair/run_impaired.py --out $(BUILD)/impair
 diversity: diversity-variants diversity-compare diversity-laws
