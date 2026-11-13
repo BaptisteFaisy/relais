@@ -696,6 +696,6 @@ qnx-relais:
 # guest frozen for real by QMP `stop`. Needs the SDP 8.0 (~/qnx800) and
 # /dev/kvm; boots ONE VM and stops it before returning (no orphan).
 .PHONY: qnx-demo
-qnx-demo:
+qnx-demo: $(BUILD)/relais-actuator $(BUILD)/relais-node $(BUILD)/relais-verify
 	python3 host/bench/qnx_demo.py --out runs/qnx-demo \
 	  --evidence docs/evidence --figures docs/figures
