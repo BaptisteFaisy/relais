@@ -96,9 +96,20 @@ jobs:
 
           demo = lire("qnx-demo-qnx-demo.json", {}) or {}
           qmp = lire("qnx-demo-qmp.json", []) or []
-          relais = demo.get("relais", {}) or {}
-          journal = relais.get("journal", {}) or {}
-          handover = relais.get("handover", {}) or {}
+          # The evidence file carries the demo fields at its TOP level
+          # (params, accel, guest_uname, takeover_us, takeover_ticks, handover,
+          # journal, verdict, loadavg) — there is no "relais" wrapper, and
+          # "verdict" is a STRING, not an object. Read them as they are and never
+          # assume a field's type: a wrong assumption here crashes the publish
+          # step after the demo has already succeeded.
+          if not isinstance(demo, dict):
+              demo = {}
+          if not isinstance(qmp, list):
+              qmp = []
+          journal = demo.get("journal") if isinstance(demo.get("journal"), dict) else {}
+          handover = demo.get("handover") if isinstance(demo.get("handover"), dict) else {}
+          verdict = demo.get("verdict", "")
+          verdict = verdict if isinstance(verdict, str) else ""
           etats = [c.get("answer", {}).get("status", "") for c in qmp
                    if isinstance(c, dict) and c.get("command") == "query-status"]
           resume = {
@@ -110,11 +121,12 @@ jobs:
               "accel": demo.get("accel", ""),
               "guest_uname": demo.get("guest_uname", ""),
               "boot_seconds": demo.get("boot_seconds"),
-              "takeover_us": relais.get("takeover_us") or demo.get("takeover_us"),
-              "takeover_ticks": journal.get("takeover_ticks"),
+              "takeover_us": demo.get("takeover_us"),
+              "takeover_ticks": demo.get("takeover_ticks") or journal.get("takeover_ticks"),
               "handover": handover,
               "journal": journal,
-              "verdict": (demo.get("verdict") or {}).get("verdict", ""),
+              "verdict": verdict,
+              "verdict_disturbed_channel": demo.get("verdict_disturbed_channel", ""),
               "qmp_statuses": [e for e in etats if e],
               "loadavg": demo.get("loadavg", []),
               "params": demo.get("params", ""),
