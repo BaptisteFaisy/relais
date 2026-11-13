@@ -130,7 +130,7 @@ jobs:
           # La branche `live` est un artefact de publication : chaque passage
           # repart d'une racine orpheline, donc le push est non fast-forward et
           # doit être forcé. `--force-with-lease` est exigé par la garde couche 0
-          # (un `--force` nu est refusé) ; on récupère d'abord la référence de
+          # (un push forcé nu est refusé) ; on récupère d'abord la référence de
           # suivi pour que le bail protège vraiment le passage en cours contre
           # une publication concurrente.
           git fetch --depth=1 origin live:refs/remotes/origin/live 2>/dev/null || true
