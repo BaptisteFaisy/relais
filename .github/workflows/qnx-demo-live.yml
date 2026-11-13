@@ -137,6 +137,15 @@ jobs:
                             encoding="utf-8")
           print(json.dumps(resume, indent=2, ensure_ascii=False)[:1200])
           PY
+          # On ne publie JAMAIS un passage non propre : un invité qui ne
+          # tient pas le tick (par ex. un runner sans KVM, en TCG lent)
+          # produirait des violations qui remplaceraient une donnée propre
+          # par une sale. La page affiche « dernier passage » : ce doit être
+          # le dernier passage *valable*, sinon on garde le précédent.
+          if ! grep -q "violations=0 " docs/evidence/qnx-demo-live.json; then
+            echo "::warning::passage NON PROPRE (violations>0 ou verdict illisible) : publication sautée, la dernière bonne donnée reste en ligne ; voir l'artefact qnx-demo-live pour ce run."
+            exit 0
+          fi
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           # La branche `live` est un artefact de publication : chaque passage
