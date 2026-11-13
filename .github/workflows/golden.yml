@@ -26,7 +26,7 @@ concurrency:
 jobs:
   golden:
     name: golden
-    runs-on: [self-hosted, linux, x64, relais-worker]
+    runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
