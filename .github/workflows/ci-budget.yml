@@ -22,7 +22,7 @@ concurrency:
 jobs:
   ci-budget:
     name: ci-budget
-    runs-on: [self-hosted, relais-worker]
+    runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - name: Checkout (superficiel)

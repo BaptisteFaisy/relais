@@ -47,7 +47,7 @@ concurrency:
 jobs:
   couche0:
     name: couche0
-    runs-on: [self-hosted, linux, x64, relais-worker]
+    runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - name: Récupérer le garde depuis main, puis contrôler la PR
