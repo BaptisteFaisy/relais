@@ -198,8 +198,11 @@ jobs:
             echo "::warning::passage NON PROPRE (violations=$COUNT) : publication sautée, la dernière bonne donnée reste en ligne ; voir l'artefact qnx-demo-live pour ce run."
             exit 0
           fi
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
+          # L'identité du propriétaire, comme le font déjà conflict-resolver.yml
+          # et pr-auto-merge.yml : le garde pre-commit du runner refuse
+          # github-actions[bot]@users.noreply.github.com (faux contributeur).
+          git config user.name "BaptisteFaisy"
+          git config user.email "119856854+BaptisteFaisy@users.noreply.github.com"
           # La branche `live` est un artefact de publication : chaque passage
           # repart d'une racine orpheline, donc le push est non fast-forward et
           # doit être forcé. `--force-with-lease` est exigé par la garde couche 0
