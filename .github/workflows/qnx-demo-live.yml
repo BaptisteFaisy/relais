@@ -83,7 +83,7 @@ jobs:
         shell: bash
         run: |
           python3 - <<'PY'
-          import datetime, json, os, pathlib, subprocess
+          import datetime, json, os, pathlib, re, subprocess
 
           def lire(nom, defaut=None):
               chemin = pathlib.Path("docs/evidence") / nom
@@ -135,6 +135,14 @@ jobs:
           sortie.parent.mkdir(parents=True, exist_ok=True)
           sortie.write_text(json.dumps(resume, indent=2, ensure_ascii=False) + "\n",
                             encoding="utf-8")
+          # Le compte des violations vient du champ `verdict` SEUL : le fichier
+          # contient aussi `verdict_disturbed_channel`, propre même quand le run
+          # ne l'est pas — chercher "violations=0" dans tout le JSON déclarait un
+          # run sale propre.
+          m = re.search(r"violations=(\d+)", verdict)
+          count = m.group(1) if m else "?"
+          temp = os.environ.get("RUNNER_TEMP", ".")
+          pathlib.Path(temp, "live-violations").write_text(count, encoding="utf-8")
           print(json.dumps(resume, indent=2, ensure_ascii=False)[:1200])
           PY
           # On ne publie JAMAIS un passage non propre : un invité qui ne
@@ -142,8 +150,9 @@ jobs:
           # produirait des violations qui remplaceraient une donnée propre
           # par une sale. La page affiche « dernier passage » : ce doit être
           # le dernier passage *valable*, sinon on garde le précédent.
-          if ! grep -q "violations=0 " docs/evidence/qnx-demo-live.json; then
-            echo "::warning::passage NON PROPRE (violations>0 ou verdict illisible) : publication sautée, la dernière bonne donnée reste en ligne ; voir l'artefact qnx-demo-live pour ce run."
+          COUNT=$(cat "$RUNNER_TEMP/live-violations" 2>/dev/null || echo "?")
+          if [ "$COUNT" != "0" ]; then
+            echo "::warning::passage NON PROPRE (violations=$COUNT) : publication sautée, la dernière bonne donnée reste en ligne ; voir l'artefact qnx-demo-live pour ce run."
             exit 0
           fi
           git config user.name "github-actions[bot]"
