@@ -16,6 +16,11 @@ on:
     # chaque heure, à une heure ronde décalée pour ne pas tomber avec le reste
     - cron: "17 * * * *"
   workflow_dispatch:
+    inputs:
+      max_load:
+        description: "Charge maximale (loadavg 15 min) pour jouer la démo ; 0 = pas de porte"
+        required: false
+        default: "12"
 
 permissions:
   contents: write
@@ -66,9 +71,47 @@ jobs:
             echo "sdp=missing" >> "$GITHUB_OUTPUT"
             echo "SDP QNX 8.0 ou QEMU absent : la démo live est sautée"
           fi
+          # KVM n'est pas un détail : en TCG l'invité ne tient pas le tick de
+          # 10 ms, le mandat est révoqué et le run sort des violations. Sans
+          # KVM, on ne joue pas : mieux vaut garder la dernière donnée propre.
+          if [ -r /dev/kvm ] && [ -w /dev/kvm ]; then
+            echo "kvm=available" >> "$GITHUB_OUTPUT"
+            echo "KVM utilisable : l'invité tiendra le tick"
+          else
+            echo "kvm=missing" >> "$GITHUB_OUTPUT"
+            echo "KVM indisponible (/dev/kvm) : passage sauté (en TCG la démo sort des violations)"
+          fi
+
+      - name: Attendre une fenêtre calme (charge de l'hôte)
+        id: quiet
+        if: steps.detect.outputs.sdp == 'available' && steps.detect.outputs.kvm == 'available'
+        shell: bash
+        run: |
+          MAX="${{ inputs.max_load || '12' }}"
+          if [ "$MAX" = "0" ]; then
+            echo "go=1" >> "$GITHUB_OUTPUT"
+            echo "porte de charge désactivée (max_load=0)"
+            exit 0
+          fi
+          # Un hôte chargé fait arriver les ordres du nœud en retard : le
+          # mandat est révoqué après p+1 manques et le verdict sort des
+          # violations. On attend donc que la charge moyenne 15 min retombe.
+          end=$(( $(date +%s) + 300 ))
+          while [ "$(date +%s)" -lt "$end" ]; do
+            load15=$(cut -d' ' -f3 /proc/loadavg)
+            if awk "BEGIN{exit !($load15 <= $MAX)}"; then
+              echo "loadavg15=$load15" >> "$GITHUB_OUTPUT"
+              echo "go=1" >> "$GITHUB_OUTPUT"
+              echo "fenêtre calme : loadavg15=$load15 <= $MAX"
+              exit 0
+            fi
+            sleep 20
+          done
+          echo "go=0" >> "$GITHUB_OUTPUT"
+          echo "::notice::hôte encore chargé après 5 min (loadavg15=$(cut -d' ' -f3 /proc/loadavg)) : passage sauté, la dernière bonne donnée reste en ligne"
 
       - name: Rejouer la démo (deux machines, QNX, gel QMP)
-        if: steps.detect.outputs.sdp == 'available'
+        if: steps.detect.outputs.sdp == 'available' && steps.detect.outputs.kvm == 'available' && steps.quiet.outputs.go == '1'
         shell: bash
         run: |
           . "${{ steps.detect.outputs.env }}"
@@ -79,7 +122,7 @@ jobs:
           ls -l docs/evidence/qnx-demo-* docs/figures/qnx-demo-proof.svg
 
       - name: Publier le résumé sur la branche live
-        if: steps.detect.outputs.sdp == 'available'
+        if: steps.detect.outputs.sdp == 'available' && steps.detect.outputs.kvm == 'available' && steps.quiet.outputs.go == '1'
         shell: bash
         run: |
           python3 - <<'PY'
@@ -171,7 +214,7 @@ jobs:
           echo "publié sur la branche live"
 
       - name: Publier les preuves complètes (artefact)
-        if: steps.detect.outputs.sdp == 'available'
+        if: steps.detect.outputs.sdp == 'available' && steps.detect.outputs.kvm == 'available' && steps.quiet.outputs.go == '1'
         uses: actions/upload-artifact@v4
         with:
           name: qnx-demo-live
