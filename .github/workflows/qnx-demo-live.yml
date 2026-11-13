@@ -37,7 +37,11 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 1
-          persist-credentials: false
+          # Les identifiants sont conservés : ce workflow est le seul à
+          # publier sur la branche `live`, et il lui faut le droit de pousser
+          # (`permissions: contents: write` plus haut). Sans cela, le `git push`
+          # n'a aucun moyen de s'authentifier.
+          persist-credentials: true
 
       - name: Détecter le SDP QNX 8.0 et QEMU
         id: detect
@@ -123,10 +127,17 @@ jobs:
           PY
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
+          # La branche `live` est un artefact de publication : chaque passage
+          # repart d'une racine orpheline, donc le push est non fast-forward et
+          # doit être forcé. `--force-with-lease` est exigé par la garde couche 0
+          # (un `--force` nu est refusé) ; on récupère d'abord la référence de
+          # suivi pour que le bail protège vraiment le passage en cours contre
+          # une publication concurrente.
+          git fetch --depth=1 origin live:refs/remotes/origin/live 2>/dev/null || true
           git checkout --orphan live
           git add docs/evidence/qnx-demo-live.json
           git commit -q -m "live: résumé de la dernière démo QNX"
-          git push --force origin live
+          git push --force-with-lease origin live
           echo "publié sur la branche live"
 
       - name: Publier les preuves complètes (artefact)
