@@ -461,7 +461,11 @@ def run_demo(args: argparse.Namespace) -> int:
         summary["journal_sealed"] = actuator.returncode == 0
         summary["qmp"] = list(vm.qmp.history) if vm and vm.qmp else []
     finally:
+        # The actuator too: on a failure it used to stay alive (PPID 1), keep
+        # the port 7100, and the NEXT run then talked to a ghost actuator that
+        # no longer existed -- the guest took the mandate of nobody.
         terminate(node_a)
+        terminate(actuator)
         if vm is not None:
             vm.stop()
         tap.close()
