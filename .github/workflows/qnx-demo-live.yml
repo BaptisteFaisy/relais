@@ -230,10 +230,15 @@ jobs:
           # une publication concurrente.
           git fetch --depth=1 origin live:refs/remotes/origin/live 2>/dev/null || true
           git checkout --orphan live
+          # `git checkout --orphan` garde l'index REMPLI : le commit embarquait
+          # donc tout l'arbre (544 fichiers, 112 k lignes) au lieu du seul JSON
+          # que la page lit. On vide l'index avant d'ajouter le fichier : la
+          # branche `live` ne porte plus que son artefact de publication.
+          git rm -rq --cached . >/dev/null 2>&1 || true
           git add docs/evidence/qnx-demo-live.json
           git commit -q -m "live: résumé de la dernière démo QNX"
           git push --force-with-lease origin live
-          echo "publié sur la branche live"
+          echo "publié sur la branche live ($(git ls-tree -r --name-only HEAD | wc -l) fichier(s))"
 
       - name: Publier les preuves complètes (artefact)
         if: steps.detect.outputs.sdp == 'available' && steps.detect.outputs.kvm == 'available' && steps.quiet.outputs.go == '1'
