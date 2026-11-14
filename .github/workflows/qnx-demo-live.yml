@@ -234,7 +234,14 @@ jobs:
           # donc tout l'arbre (544 fichiers, 112 k lignes) au lieu du seul JSON
           # que la page lit. On vide l'index avant d'ajouter le fichier : la
           # branche `live` ne porte plus que son artefact de publication.
-          git rm -rq --cached . >/dev/null 2>&1 || true
+          #
+          # `git read-tree --empty` et non `git rm --cached` : la démo vient de
+          # réécrire docs/evidence/* et docs/figures/*, dont le contenu indexé
+          # diffère donc du fichier ET de HEAD — `git rm` refuse alors sans `-f`
+          # et laisse l'index entier en place (raté observé le 14/11 : 544
+          # fichiers publiés malgré le correctif). read-tree ne regarde que
+          # l'index et laisse le working tree intact.
+          git read-tree --empty
           git add docs/evidence/qnx-demo-live.json
           git commit -q -m "live: résumé de la dernière démo QNX"
           git push --force-with-lease origin live
