@@ -191,6 +191,20 @@ jobs:
               "verdict_disturbed_channel": demo.get("verdict_disturbed_channel", ""),
               "qmp_statuses": [e for e in etats if e],
               "loadavg": demo.get("loadavg", []),
+              # On instrumente avant de régler : les passages propres et sales ne
+              # se séparent PAS sur le loadavg (propre le 14/11 à 12:29 avec
+              # load 14,7/21,4/23,4 ; sales à 13:40 et 14:47 avec load 7,5 et
+              # 23,2). Ce qui varie vraiment, c'est ce qui tourne en même temps
+              # sur l'hôte — les VMs QEMU d'autres projets (replique, cadence,
+              # qnx71-vm) volent le tick de 10 ms à l'invité. On consigne donc
+              # le nombre de QEMU actifs et la taille de l'hôte à côté du
+              # verdict : ~36 passages/jour donnent enfin de quoi trancher, et
+              # la porte « fenêtre calme » sera réglée sur des faits, pas sur
+              # cinq points.
+              "qemu_active": int((subprocess.run(
+                  ["pgrep", "-c", "qemu-system"],
+                  capture_output=True, text=True).stdout.strip() or "0")),
+              "cpu_count": os.cpu_count(),
               "params": demo.get("params", ""),
           }
           sortie = pathlib.Path("docs/evidence/qnx-demo-live.json")
